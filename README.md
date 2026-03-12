@@ -1,5 +1,21 @@
 # Sovereign
 
+A small ecosystem of local-first, self-hosted tools.
+
+## Applications
+
+| Application | Domain |
+|---|---|
+| Sovereign Planta | Plant care |
+| Sovereign Finance | Personal finance |
+| Sovereign Strength | Strength training |
+
+## Principles
+
+- local-first
+- self-hosted
+- no tracking
+- transparent logic
 Sovereign is a family of local-first, self-hosted applications designed to support everyday life through calm, understandable, and user-controlled software.
 
 The project is built around a simple idea: important personal tools should remain transparent, portable, inspectable, and independent of unnecessary platform dependence.
