@@ -31,3 +31,6 @@ flowchart LR
     Proxy -. internal routing .-> Strength
     Proxy -. internal routing .-> Mind
 ```
+## High-level diagram
+
+![Sovereign architecture](architecture.svg)

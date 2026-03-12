@@ -20,6 +20,23 @@ Sovereign is a family of local-first, self-hosted applications designed to suppo
 
 The project is built around a simple idea: important personal tools should remain transparent, portable, inspectable, and independent of unnecessary platform dependence.
 
+## At a glance
+
+| Application | Domain | Status |
+|---|---|---|
+| Sovereign Planta | Plant care and household maintenance | Active |
+| Sovereign Finance | Personal finance and decision support | Active |
+| Sovereign Strength | Strength training and progression tracking | Active |
+| Sovereign Mind | Cognitive decision support and personal reasoning | Planned |
+
+## Repositories
+
+- `https://github.com/jakobbskov/sovereign`
+- `https://github.com/jakobbskov/sovereign-planta`
+- `https://github.com/jakobbskov/sovereign-finance`
+- `https://github.com/jakobbskov/sovereign-strength`
+- `https://github.com/jakobbskov/sovereign-mind`
+
 ## Purpose
 
 The Sovereign project exists to create a small ecosystem of self-hosted tools that are:
@@ -88,6 +105,21 @@ Focus areas:
 - progression monitoring
 - training adjustment logic
 
+### Sovereign Mind
+
+A planned application for cognitive decision support, reflective logging, and structured reasoning.
+
+Repository:
+`https://github.com/jakobbskov/sovereign-mind`
+
+Intended focus areas:
+
+- decision logging
+- reasoning structure
+- bias checking
+- personal model tracking
+- reflective support without journaling fluff
+
 ## Shared architecture philosophy
 
 The applications are independent repositories, but they share a common architectural philosophy:
@@ -109,6 +141,14 @@ At a high level:
 - Beelink hosts selected application services and operational workloads
 
 This split supports both practical self-hosting and controlled service separation.
+
+## Architecture overview
+
+See:
+
+- `docs/portfolio.md`
+- `docs/architecture-overview.md`
+- `docs/hosting-overview.md`
 
 ## Repository structure
 
