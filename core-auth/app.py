@@ -724,6 +724,11 @@ def login_page():
       text-align:center;
       margin-top:12px;
     }}
+@media (max-width:700px){
+table{display:block;overflow-x:auto;white-space:nowrap;}
+th:nth-child(6),td:nth-child(6),th:nth-child(7),td:nth-child(7){display:none;}
+.actions{flex-direction:column;}
+}
   </style>
 </head>
 <body>
