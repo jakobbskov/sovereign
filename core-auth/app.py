@@ -9,6 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from db import (
     init_db,
     user_count,
+    list_users,
     get_user_by_username,
     get_user_by_email,
     get_user_by_id,
@@ -16,6 +17,8 @@ from db import (
     update_last_login,
     update_user_password,
     update_user_profile,
+    update_user_role,
+    update_user_active_status,
     insert_session,
     get_session_by_token,
     revoke_session,
@@ -156,6 +159,23 @@ def get_safe_return_to(default="https://strength.innosocia.dk"):
     return default
 
 
+def require_admin_auth():
+    user, session_row = get_current_auth()
+    if user is None:
+        return None, jsonify({
+            "ok": False,
+            "error": "not authenticated"
+        }), 401
+
+    if str(user["role"]) != "admin":
+        return None, jsonify({
+            "ok": False,
+            "error": "forbidden"
+        }), 403
+
+    return user, None, None
+
+
 def create_session_response(user):
     now_dt = now_utc()
     now_iso = now_dt.isoformat()
@@ -235,6 +255,113 @@ def auth_validate():
         "user_id": user["id"],
         "username": user["username"],
         "role": user["role"],
+    }), 200
+
+
+@app.get("/api/admin/users")
+def api_admin_users():
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        return err_response, status
+
+    users = []
+    for row in list_users():
+        users.append({
+            "id": row["id"],
+            "username": row["username"],
+            "email": row["email"],
+            "role": row["role"],
+            "is_active": bool(row["is_active"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "last_login_at": row["last_login_at"],
+        })
+
+    return jsonify({
+        "ok": True,
+        "items": users
+    }), 200
+
+
+@app.post("/api/admin/users/<int:user_id>/role")
+def api_admin_set_user_role(user_id):
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        return err_response, status
+
+    target_user = get_user_by_id(user_id)
+    if target_user is None:
+        return jsonify({
+            "ok": False,
+            "error": "user not found"
+        }), 404
+
+    payload = request.get_json(silent=True) or {}
+    role = str(payload.get("role", "")).strip()
+
+    if role not in ("admin", "user"):
+        return jsonify({
+            "ok": False,
+            "error": "invalid role"
+        }), 400
+
+    update_user_role(user_id, role, now_utc_iso())
+    updated_user = get_user_by_id(user_id)
+
+    return jsonify({
+        "ok": True,
+        "message": "role updated",
+        "user": {
+            "id": updated_user["id"],
+            "username": updated_user["username"],
+            "email": updated_user["email"],
+            "role": updated_user["role"],
+            "is_active": bool(updated_user["is_active"]),
+        }
+    }), 200
+
+
+@app.post("/api/admin/users/<int:user_id>/status")
+def api_admin_set_user_status(user_id):
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        return err_response, status
+
+    target_user = get_user_by_id(user_id)
+    if target_user is None:
+        return jsonify({
+            "ok": False,
+            "error": "user not found"
+        }), 404
+
+    payload = request.get_json(silent=True) or {}
+    is_active_raw = payload.get("is_active", None)
+
+    if not isinstance(is_active_raw, bool):
+        return jsonify({
+            "ok": False,
+            "error": "is_active must be boolean"
+        }), 400
+
+    if int(target_user["id"]) == int(admin_user["id"]) and is_active_raw is False:
+        return jsonify({
+            "ok": False,
+            "error": "cannot deactivate yourself"
+        }), 400
+
+    update_user_active_status(user_id, 1 if is_active_raw else 0, now_utc_iso())
+    updated_user = get_user_by_id(user_id)
+
+    return jsonify({
+        "ok": True,
+        "message": "status updated",
+        "user": {
+            "id": updated_user["id"],
+            "username": updated_user["username"],
+            "email": updated_user["email"],
+            "role": updated_user["role"],
+            "is_active": bool(updated_user["is_active"]),
+        }
     }), 200
 
 
@@ -521,6 +648,7 @@ def root():
         '<p>Auth-service kører.</p>'
         '<p><a href="/login" style="color:#9fd3a8">Gå til login</a></p>'
         '<p><a href="/account" style="color:#9fd3a8">Gå til konto</a></p>'
+        '<p><a href="/admin/users" style="color:#9fd3a8">Gå til admin</a></p>'
         '<p><a href="/register" style="color:#9fd3a8">Opret bruger</a></p>'
         '</body></html>'
     )
@@ -864,6 +992,7 @@ def account_page():
     email = user["email"] or ""
     role = user["role"]
     last_login_at = user["last_login_at"] or "ukendt"
+    admin_link = '<a id="adminLink" href="/admin/users" style="width:auto;min-width:160px;text-align:center">Admin-panel</a>' if role == "admin" else ""
 
     return f"""
 <!doctype html>
@@ -1012,6 +1141,7 @@ def account_page():
 
     <div class="row">
       <a id="backLink" href="{return_to_js}">Tilbage til app</a>
+      {admin_link}
       <button id="logoutBtn" type="button">Log ud</button>
     </div>
   </div>
@@ -1096,6 +1226,260 @@ def account_page():
       }}catch(err){{}}
       location.href = `/login?return_to=${{encodeURIComponent(returnTo)}}`;
     }});
+  </script>
+</body>
+</html>
+"""
+
+
+@app.get("/admin/users")
+def admin_users_page():
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        if status == 401:
+            login_target = f"/login?return_to={quote(request.url, safe=':/?&=%-_~.#')}"
+            return (
+                '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+                '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                '<title>Sovereign Admin</title></head>'
+                '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
+                '<h1>Sovereign Admin</h1>'
+                '<p>Du er ikke logget ind.</p>'
+                f'<p><a href="{login_target}" style="color:#9fd3a8">Gå til login</a></p>'
+                '</body></html>'
+            )
+        return (
+            '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<title>Sovereign Admin</title></head>'
+            '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
+            '<h1>Sovereign Admin</h1>'
+            '<p>Adgang nægtet.</p>'
+            '<p><a href="/account" style="color:#9fd3a8">Gå til konto</a></p>'
+            '</body></html>'
+        )
+
+    return """
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sovereign Admin</title>
+  <style>
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      background:#111;
+      color:#f3f3f3;
+      padding:24px;
+    }
+    .wrap{
+      max-width:1100px;
+      margin:0 auto;
+    }
+    .card{
+      background:#1b1b1b;
+      border:1px solid #2c2c2c;
+      border-radius:16px;
+      padding:20px;
+    }
+    h1,h2{margin:0 0 10px}
+    p,.small{color:#b9b9b9}
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:16px;
+    }
+    th,td{
+      border-bottom:1px solid #2c2c2c;
+      padding:10px 8px;
+      text-align:left;
+      vertical-align:top;
+      font-size:.95rem;
+    }
+    th{color:#b9b9b9}
+    button,a{
+      border-radius:10px;
+      border:1px solid #2c2c2c;
+      background:#151515;
+      color:#f3f3f3;
+      padding:8px 10px;
+      font:inherit;
+      text-decoration:none;
+      cursor:pointer;
+    }
+    .actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:16px;
+    }
+    .ok{color:#9fd3a8}
+    .err{color:#e7c27d}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Sovereign Admin</h1>
+      <p>Brugeradministration for Sovereign Core Auth.</p>
+
+      <div class="row">
+        <a href="/account">Tilbage til konto</a>
+      </div>
+
+      <div id="status" class="small">Indlæser brugere…</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Brugernavn</th>
+            <th>E-mail</th>
+            <th>Rolle</th>
+            <th>Status</th>
+            <th>Oprettet</th>
+            <th>Seneste login</th>
+            <th>Handlinger</th>
+          </tr>
+        </thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const usersBody = document.getElementById("usersBody");
+
+    function esc(value){
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    async function loadUsers(){
+      statusEl.textContent = "Indlæser brugere…";
+      statusEl.className = "small";
+
+      try{
+        const res = await fetch("/api/admin/users", {
+          credentials: "include",
+          cache: "no-store"
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok){
+          throw new Error(data?.error || `HTTP ${res.status}`);
+        }
+
+        const items = Array.isArray(data?.items) ? data.items : [];
+        usersBody.innerHTML = items.map(user => {
+          const roleBtnLabel = user.role === "admin" ? "Gør user" : "Gør admin";
+          const nextRole = user.role === "admin" ? "user" : "admin";
+          const statusBtnLabel = user.is_active ? "Deaktivér" : "Aktivér";
+          const nextStatus = user.is_active ? "false" : "true";
+
+          return `
+            <tr data-user-id="${esc(user.id)}">
+              <td>${esc(user.id)}</td>
+              <td>${esc(user.username)}</td>
+              <td>${esc(user.email || "")}</td>
+              <td>${esc(user.role)}</td>
+              <td>${user.is_active ? "aktiv" : "inaktiv"}</td>
+              <td>${esc(user.created_at || "")}</td>
+              <td>${esc(user.last_login_at || "")}</td>
+              <td>
+                <div class="actions">
+                  <button type="button" data-action="role" data-role="${esc(nextRole)}">${esc(roleBtnLabel)}</button>
+                  <button type="button" data-action="status" data-active="${esc(nextStatus)}">${esc(statusBtnLabel)}</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+        bindRowActions();
+        statusEl.textContent = `${items.length} bruger(e) indlæst.`;
+        statusEl.className = "small ok";
+      }catch(err){
+        usersBody.innerHTML = "";
+        statusEl.textContent = "Fejl: " + (err?.message || String(err));
+        statusEl.className = "small err";
+      }
+    }
+
+    function bindRowActions(){
+      usersBody.querySelectorAll("button[data-action='role']").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const row = btn.closest("tr");
+          const userId = row?.getAttribute("data-user-id");
+          const role = btn.getAttribute("data-role");
+
+          statusEl.textContent = "Opdaterer rolle…";
+          statusEl.className = "small";
+
+          try{
+            const res = await fetch(`/api/admin/users/${userId}/role`, {
+              method: "POST",
+              credentials: "include",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({ role })
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok){
+              throw new Error(data?.error || `HTTP ${res.status}`);
+            }
+
+            await loadUsers();
+          }catch(err){
+            statusEl.textContent = "Fejl: " + (err?.message || String(err));
+            statusEl.className = "small err";
+          }
+        });
+      });
+
+      usersBody.querySelectorAll("button[data-action='status']").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const row = btn.closest("tr");
+          const userId = row?.getAttribute("data-user-id");
+          const is_active = btn.getAttribute("data-active") === "true";
+
+          statusEl.textContent = "Opdaterer status…";
+          statusEl.className = "small";
+
+          try{
+            const res = await fetch(`/api/admin/users/${userId}/status`, {
+              method: "POST",
+              credentials: "include",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({ is_active })
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok){
+              throw new Error(data?.error || `HTTP ${res.status}`);
+            }
+
+            await loadUsers();
+          }catch(err){
+            statusEl.textContent = "Fejl: " + (err?.message || String(err));
+            statusEl.className = "small err";
+          }
+        });
+      });
+    }
+
+    loadUsers();
   </script>
 </body>
 </html>
