@@ -28,6 +28,28 @@ def user_count():
     return row["c"]
 
 
+def list_users():
+    conn = get_db()
+    cur = conn.execute(
+        """
+        SELECT
+            id,
+            username,
+            email,
+            role,
+            is_active,
+            created_at,
+            updated_at,
+            last_login_at
+        FROM users
+        ORDER BY username COLLATE NOCASE ASC
+        """
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
 def get_user_by_username(username):
     conn = get_db()
     cur = conn.execute(
@@ -114,6 +136,48 @@ def update_user_profile(user_id, username, email, now):
         WHERE id = ?
         """,
         (username, email, now, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_user_role(user_id, role, now):
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE users
+        SET role = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (role, now, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_user_active_status(user_id, is_active, now):
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE users
+        SET is_active = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (is_active, now, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_user_must_change_password(user_id, must_change_password, now):
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE users
+        SET must_change_password = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (must_change_password, now, user_id),
     )
     conn.commit()
     conn.close()

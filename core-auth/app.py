@@ -19,6 +19,7 @@ from db import (
     update_user_profile,
     update_user_role,
     update_user_active_status,
+    set_user_must_change_password,
     insert_session,
     get_session_by_token,
     revoke_session,
@@ -204,6 +205,7 @@ def create_session_response(user):
             "username": user["username"],
             "email": user["email"],
             "role": user["role"],
+            "must_change_password": bool(user["must_change_password"]),
         }
     }), 200)
 
@@ -236,6 +238,7 @@ def auth_me():
             "username": user["username"],
             "email": user["email"],
             "role": user["role"],
+            "must_change_password": bool(user["must_change_password"]),
         }
     }), 200
 
@@ -355,6 +358,41 @@ def api_admin_set_user_status(user_id):
     return jsonify({
         "ok": True,
         "message": "status updated",
+        "user": {
+            "id": updated_user["id"],
+            "username": updated_user["username"],
+            "email": updated_user["email"],
+            "role": updated_user["role"],
+            "is_active": bool(updated_user["is_active"]),
+        }
+    }), 200
+
+
+@app.post("/api/admin/users/<int:user_id>/reset-password")
+def api_admin_reset_user_password(user_id):
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        return err_response, status
+
+    target_user = get_user_by_id(user_id)
+    if target_user is None:
+        return jsonify({
+            "ok": False,
+            "error": "user not found"
+        }), 404
+
+    temp_password = "Temp-" + secrets.token_urlsafe(9)
+    now = now_utc_iso()
+    password_hash = generate_password_hash(temp_password)
+    update_user_password(user_id, password_hash, now)
+    set_user_must_change_password(user_id, 1, now)
+
+    updated_user = get_user_by_id(user_id)
+
+    return jsonify({
+        "ok": True,
+        "message": "password reset",
+        "temporary_password": temp_password,
         "user": {
             "id": updated_user["id"],
             "username": updated_user["username"],
@@ -579,8 +617,10 @@ def auth_change_password():
             "error": "new password must be different from current password"
         }), 400
 
+    now = now_utc_iso()
     password_hash = generate_password_hash(new_password)
-    update_user_password(user["id"], password_hash, now_utc_iso())
+    update_user_password(user["id"], password_hash, now)
+    set_user_must_change_password(user["id"], 0, now)
 
     return jsonify({
         "ok": True,
@@ -724,12 +764,18 @@ def login_page():
       text-align:center;
       margin-top:12px;
     }}
-@media (max-width:700px){
-table{display:block;overflow-x:auto;white-space:nowrap;}
-th:nth-child(6),td:nth-child(6),th:nth-child(7),td:nth-child(7){display:none;}
-.actions{flex-direction:column;}
+@media (max-width:800px){{
+table{{display:block;overflow-x:auto;white-space:nowrap;}}
+th:nth-child(6),td:nth-child(6),th:nth-child(7),td:nth-child(7){{display:none;}}
+.actions{{flex-direction:column;}}
+}}
+  
+.table-scroll{
+overflow-x:auto;
+max-width:100%;
 }
-  </style>
+
+</style>
 </head>
 <body>
   <div class="card">
@@ -893,7 +939,13 @@ def register_page():
     }}
     .err{{color:#e7c27d}}
     .linkbtn{{display:block;text-align:center;margin-top:12px}}
-  </style>
+  
+.table-scroll{
+overflow-x:auto;
+max-width:100%;
+}
+
+</style>
 </head>
 <body>
   <div class="card">
@@ -997,7 +1049,9 @@ def account_page():
     email = user["email"] or ""
     role = user["role"]
     last_login_at = user["last_login_at"] or "ukendt"
+    must_change_password = bool(user["must_change_password"])
     admin_link = '<a id="adminLink" href="/admin/users" style="width:auto;min-width:160px;text-align:center">Admin-panel</a>' if role == "admin" else ""
+    password_warning = '<div class="meta" style="border-color:#6b5522"><div class="line"><strong>Vigtigt:</strong> Dit password er midlertidigt nulstillet. Du skal vælge et nyt password nu.</div></div>' if must_change_password else ""
 
     return f"""
 <!doctype html>
@@ -1087,7 +1141,13 @@ def account_page():
       padding-top:18px;
       border-top:1px solid #2c2c2c;
     }}
-  </style>
+  
+.table-scroll{
+overflow-x:auto;
+max-width:100%;
+}
+
+</style>
 </head>
 <body>
   <div class="card">
@@ -1100,6 +1160,8 @@ def account_page():
       <div class="line"><strong>Rolle:</strong> {role}</div>
       <div class="line"><strong>Seneste login:</strong> {last_login_at}</div>
     </div>
+
+    {password_warning}
 
     <div class="section">
       <h2>Konto-oplysninger</h2>
@@ -1291,10 +1353,38 @@ def admin_users_page():
     }
     h1,h2{margin:0 0 10px}
     p,.small{color:#b9b9b9}
+    .toolbar{
+      display:grid;
+      grid-template-columns:2fr 1fr 1fr;
+      gap:10px;
+      margin-top:16px;
+    }
+    .toolbar input,
+    .toolbar select,
+    .toolbar button,
+    .toolbar a{
+      border-radius:10px;
+      border:1px solid #2c2c2c;
+      background:#151515;
+      color:#f3f3f3;
+      padding:10px 12px;
+      font:inherit;
+      box-sizing:border-box;
+      text-decoration:none;
+    }
+    .table-scroll{
+      overflow-x:auto;
+      max-width:100%;
+      margin-top:16px;
+    }
     table{
       width:100%;
       border-collapse:collapse;
-      margin-top:16px;
+      table-layout:fixed;
+    }
+    td,th{
+      word-wrap:break-word;
+      white-space:normal;
     }
     th,td{
       border-bottom:1px solid #2c2c2c;
@@ -1327,6 +1417,85 @@ def admin_users_page():
     }
     .ok{color:#9fd3a8}
     .err{color:#e7c27d}
+
+    /* admin mobile cards */
+    @media (max-width:800px){
+      .toolbar{
+        grid-template-columns:1fr;
+      }
+      .table-scroll{
+        overflow:visible;
+      }
+      table{
+        display:block;
+        width:100%;
+      }
+      thead{
+        display:none;
+      }
+      tbody{
+        display:block;
+        width:100%;
+      }
+      tr{
+        display:block;
+        width:100%;
+        margin:0 0 14px 0;
+        padding:12px;
+        border:1px solid #2c2c2c;
+        border-radius:12px;
+        background:#151515;
+        box-sizing:border-box;
+      }
+      td{
+        display:block;
+        width:100%;
+        border:none;
+        padding:4px 0;
+        white-space:normal;
+        word-break:break-word;
+        box-sizing:border-box;
+      }
+      td:nth-child(1),
+      td:nth-child(6),
+      td:nth-child(7){
+        display:none;
+      }
+      td:nth-child(2)::before{
+        content:"Brugernavn: ";
+        color:#b9b9b9;
+        font-weight:600;
+      }
+      td:nth-child(3)::before{
+        content:"E-mail: ";
+        color:#b9b9b9;
+        font-weight:600;
+      }
+      td:nth-child(4)::before{
+        content:"Rolle: ";
+        color:#b9b9b9;
+        font-weight:600;
+      }
+      td:nth-child(5)::before{
+        content:"Status: ";
+        color:#b9b9b9;
+        font-weight:600;
+      }
+      td:nth-child(8)::before{
+        content:"Handlinger:";
+        display:block;
+        color:#b9b9b9;
+        font-weight:600;
+        margin-bottom:8px;
+      }
+      .actions{
+        flex-direction:column;
+        gap:8px;
+      }
+      .actions button{
+        width:100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1339,29 +1508,50 @@ def admin_users_page():
         <a href="/account">Tilbage til konto</a>
       </div>
 
+      <div class="toolbar">
+        <input id="userSearch" type="search" placeholder="Søg på brugernavn eller e-mail">
+        <select id="roleFilter">
+          <option value="">Alle roller</option>
+          <option value="admin">Kun admins</option>
+          <option value="user">Kun users</option>
+        </select>
+        <select id="statusFilter">
+          <option value="">Alle statuser</option>
+          <option value="active">Kun aktive</option>
+          <option value="inactive">Kun inaktive</option>
+        </select>
+      </div>
+
       <div id="status" class="small">Indlæser brugere…</div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Brugernavn</th>
-            <th>E-mail</th>
-            <th>Rolle</th>
-            <th>Status</th>
-            <th>Oprettet</th>
-            <th>Seneste login</th>
-            <th>Handlinger</th>
-          </tr>
-        </thead>
-        <tbody id="usersBody"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Brugernavn</th>
+              <th>E-mail</th>
+              <th>Rolle</th>
+              <th>Status</th>
+              <th>Oprettet</th>
+              <th>Seneste login</th>
+              <th>Handlinger</th>
+            </tr>
+          </thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
   <script>
     const statusEl = document.getElementById("status");
     const usersBody = document.getElementById("usersBody");
+    const userSearchEl = document.getElementById("userSearch");
+    const roleFilterEl = document.getElementById("roleFilter");
+    const statusFilterEl = document.getElementById("statusFilter");
+
+    let ALL_USERS = [];
 
     function esc(value){
       return String(value ?? "")
@@ -1369,6 +1559,57 @@ def admin_users_page():
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }
+
+    function renderUsers(items){
+      usersBody.innerHTML = items.map(user => {
+        const roleBtnLabel = user.role === "admin" ? "Gør user" : "Gør admin";
+        const nextRole = user.role === "admin" ? "user" : "admin";
+        const statusBtnLabel = user.is_active ? "Deaktivér" : "Aktivér";
+        const nextStatus = user.is_active ? "false" : "true";
+
+        return `
+          <tr data-user-id="${esc(user.id)}">
+            <td>${esc(user.id)}</td>
+            <td>${esc(user.username)}</td>
+            <td>${esc(user.email || "")}</td>
+            <td>${esc(user.role)}</td>
+            <td>${user.is_active ? "aktiv" : "inaktiv"}</td>
+            <td>${esc(user.created_at || "")}</td>
+            <td>${esc(user.last_login_at || "")}</td>
+            <td>
+              <div class="actions">
+                <button type="button" data-action="role" data-role="${esc(nextRole)}">${esc(roleBtnLabel)}</button>
+                <button type="button" data-action="status" data-active="${esc(nextStatus)}">${esc(statusBtnLabel)}</button>
+                <button type="button" data-action="reset-password">Nulstil password</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      bindRowActions();
+      statusEl.textContent = `${items.length} bruger(e) vist.`;
+      statusEl.className = "small ok";
+    }
+
+    function getFilteredUsers(){
+      const q = userSearchEl.value.trim().toLowerCase();
+      const role = roleFilterEl.value;
+      const status = statusFilterEl.value;
+
+      return ALL_USERS.filter(user => {
+        const haystack = `${user.username || ""} ${user.email || ""}`.toLowerCase();
+        if (q && !haystack.includes(q)) return false;
+        if (role && user.role !== role) return false;
+        if (status === "active" && !user.is_active) return false;
+        if (status === "inactive" && user.is_active) return false;
+        return true;
+      });
+    }
+
+    function applyFilters(){
+      renderUsers(getFilteredUsers());
     }
 
     async function loadUsers(){
@@ -1386,36 +1627,10 @@ def admin_users_page():
           throw new Error(data?.error || `HTTP ${res.status}`);
         }
 
-        const items = Array.isArray(data?.items) ? data.items : [];
-        usersBody.innerHTML = items.map(user => {
-          const roleBtnLabel = user.role === "admin" ? "Gør user" : "Gør admin";
-          const nextRole = user.role === "admin" ? "user" : "admin";
-          const statusBtnLabel = user.is_active ? "Deaktivér" : "Aktivér";
-          const nextStatus = user.is_active ? "false" : "true";
-
-          return `
-            <tr data-user-id="${esc(user.id)}">
-              <td>${esc(user.id)}</td>
-              <td>${esc(user.username)}</td>
-              <td>${esc(user.email || "")}</td>
-              <td>${esc(user.role)}</td>
-              <td>${user.is_active ? "aktiv" : "inaktiv"}</td>
-              <td>${esc(user.created_at || "")}</td>
-              <td>${esc(user.last_login_at || "")}</td>
-              <td>
-                <div class="actions">
-                  <button type="button" data-action="role" data-role="${esc(nextRole)}">${esc(roleBtnLabel)}</button>
-                  <button type="button" data-action="status" data-active="${esc(nextStatus)}">${esc(statusBtnLabel)}</button>
-                </div>
-              </td>
-            </tr>
-          `;
-        }).join("");
-
-        bindRowActions();
-        statusEl.textContent = `${items.length} bruger(e) indlæst.`;
-        statusEl.className = "small ok";
+        ALL_USERS = Array.isArray(data?.items) ? data.items : [];
+        applyFilters();
       }catch(err){
+        ALL_USERS = [];
         usersBody.innerHTML = "";
         statusEl.textContent = "Fejl: " + (err?.message || String(err));
         statusEl.className = "small err";
@@ -1482,13 +1697,50 @@ def admin_users_page():
           }
         });
       });
+
+      usersBody.querySelectorAll("button[data-action='reset-password']").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const row = btn.closest("tr");
+          const userId = row?.getAttribute("data-user-id");
+
+          statusEl.textContent = "Nulstiller password…";
+          statusEl.className = "small";
+
+          try{
+            const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+              method: "POST",
+              credentials: "include",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({})
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok){
+              throw new Error(data?.error || `HTTP ${res.status}`);
+            }
+
+            const username = data?.user?.username || `#${userId}`;
+            const tempPassword = data?.temporary_password || "";
+            statusEl.textContent = `Midlertidigt password for ${username}: ${tempPassword}`;
+            statusEl.className = "small ok";
+          }catch(err){
+            statusEl.textContent = "Fejl: " + (err?.message || String(err));
+            statusEl.className = "small err";
+          }
+        });
+      });
     }
+
+    userSearchEl.addEventListener("input", applyFilters);
+    roleFilterEl.addEventListener("change", applyFilters);
+    statusFilterEl.addEventListener("change", applyFilters);
 
     loadUsers();
   </script>
 </body>
 </html>
 """
+
 
 
 if __name__ == "__main__":
