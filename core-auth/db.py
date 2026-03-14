@@ -39,6 +39,17 @@ def get_user_by_username(username):
     return row
 
 
+def get_user_by_email(email):
+    conn = get_db()
+    cur = conn.execute(
+        "SELECT * FROM users WHERE email = ?",
+        (email,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
 def get_user_by_id(user_id):
     conn = get_db()
     cur = conn.execute(
@@ -89,6 +100,20 @@ def update_user_password(user_id, password_hash, now):
         WHERE id = ?
         """,
         (password_hash, now, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_user_profile(user_id, username, email, now):
+    conn = get_db()
+    conn.execute(
+        """
+        UPDATE users
+        SET username = ?, email = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (username, email, now, user_id),
     )
     conn.commit()
     conn.close()
