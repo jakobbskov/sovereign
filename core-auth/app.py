@@ -628,6 +628,53 @@ def auth_change_password():
     }), 200
 
 
+@app.post("/api/auth/complete-password-reset")
+def auth_complete_password_reset():
+    user, session_row = get_current_auth()
+    if user is None:
+        return jsonify({
+            "ok": False,
+            "error": "not authenticated"
+        }), 401
+
+    if not bool(user["must_change_password"]):
+        return jsonify({
+            "ok": False,
+            "error": "reset not required"
+        }), 400
+
+    payload = request.get_json(silent=True) or {}
+    new_password = str(payload.get("new_password", "")).strip()
+    confirm_password = str(payload.get("confirm_password", "")).strip()
+
+    if not new_password or not confirm_password:
+        return jsonify({
+            "ok": False,
+            "error": "new password fields are required"
+        }), 400
+
+    if len(new_password) < 12:
+        return jsonify({
+            "ok": False,
+            "error": "new password must be at least 12 characters"
+        }), 400
+
+    if new_password != confirm_password:
+        return jsonify({
+            "ok": False,
+            "error": "new passwords do not match"
+        }), 400
+
+    password_hash = generate_password_hash(new_password)
+    now = now_utc_iso()
+    update_user_password(user["id"], password_hash, now)
+    set_user_must_change_password(user["id"], 0, now)
+
+    return jsonify({
+        "ok": True,
+        "message": "password reset complete"
+    }), 200
+
 @app.post("/api/auth/update-profile")
 def auth_update_profile():
     user, session_row = get_current_auth()
@@ -764,18 +811,7 @@ def login_page():
       text-align:center;
       margin-top:12px;
     }}
-@media (max-width:800px){{
-table{{display:block;overflow-x:auto;white-space:nowrap;}}
-th:nth-child(6),td:nth-child(6),th:nth-child(7),td:nth-child(7){{display:none;}}
-.actions{{flex-direction:column;}}
-}}
-  
-.table-scroll{
-overflow-x:auto;
-max-width:100%;
-}
-
-</style>
+  </style>
 </head>
 <body>
   <div class="card">
@@ -850,7 +886,11 @@ max-width:100%;
           }}
 
           status.textContent = "Login OK. Sender videre…";
-          location.href = returnTo;
+        if (data?.user?.must_change_password){{
+          location.href = "/account?return_to=" + encodeURIComponent(returnTo);
+          return;
+        }}
+        location.href = returnTo;
         }}catch(err){{
           status.textContent = "Fejl: " + (err?.message || String(err));
           status.classList.add("err");
@@ -1061,92 +1101,86 @@ def account_page():
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Sovereign Account</title>
   <style>
-    body{{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      background:#111;
-      color:#f3f3f3;
-      display:grid;
-      place-items:center;
-      min-height:100vh;
-      padding:16px 0;
-    }}
-    .card{{
-      width:min(560px, calc(100vw - 32px));
-      background:#1b1b1b;
-      border:1px solid #2c2c2c;
-      border-radius:16px;
-      padding:20px;
-    }}
-    h1,h2{{margin:0 0 10px}}
-    p{{color:#b9b9b9}}
-    .meta{{
-      display:grid;
-      gap:8px;
-      margin:16px 0 22px;
-      padding:14px;
-      border:1px solid #2c2c2c;
-      border-radius:12px;
-      background:#151515;
-    }}
-    .line{{color:#b9b9b9}}
-    .line strong{{color:#f3f3f3}}
-    form{{
-      display:grid;
-      gap:12px;
-      margin-top:8px;
-    }}
-    label{{
-      display:grid;
-      gap:6px;
-      color:#b9b9b9;
-      font-size:.95rem;
-    }}
-    input,button,a{{
-      width:100%;
-      border-radius:10px;
-      border:1px solid #2c2c2c;
-      background:#151515;
-      color:#f3f3f3;
-      padding:10px 12px;
-      font:inherit;
-      box-sizing:border-box;
-      text-decoration:none;
-    }}
-    button{{
-      cursor:pointer;
-      background:#242424;
-      font-weight:600;
-    }}
-    .row{{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:16px;
-    }}
-    .row a, .row button{{
-      width:auto;
-      min-width:160px;
-      text-align:center;
-    }}
-    .small{{
-      margin-top:10px;
-      color:#b9b9b9;
-      font-size:.95rem;
-    }}
-    .ok{{color:#9fd3a8}}
-    .err{{color:#e7c27d}}
-    .section{{
-      margin-top:22px;
-      padding-top:18px;
-      border-top:1px solid #2c2c2c;
-    }}
-  
-.table-scroll{
-overflow-x:auto;
-max-width:100%;
-}
-
+body{{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:#111;
+  color:#f3f3f3;
+  display:grid;
+  place-items:center;
+  min-height:100vh;
+  padding:16px 0;
+}}
+.card{{
+  width:min(560px, calc(100vw - 32px));
+  background:#1b1b1b;
+  border:1px solid #2c2c2c;
+  border-radius:16px;
+  padding:20px;
+}}
+h1,h2{{margin:0 0 10px}}
+p{{color:#b9b9b9}}
+.meta{{
+  display:grid;
+  gap:8px;
+  margin:16px 0 22px;
+  padding:14px;
+  border:1px solid #2c2c2c;
+  border-radius:12px;
+  background:#151515;
+}}
+.line{{color:#b9b9b9}}
+.line strong{{color:#f3f3f3}}
+form{{
+  display:grid;
+  gap:12px;
+  margin-top:8px;
+}}
+label{{
+  display:grid;
+  gap:6px;
+  color:#b9b9b9;
+  font-size:.95rem;
+}}
+input,button,a{{
+  width:100%;
+  border-radius:10px;
+  border:1px solid #2c2c2c;
+  background:#151515;
+  color:#f3f3f3;
+  padding:10px 12px;
+  font:inherit;
+  box-sizing:border-box;
+  text-decoration:none;
+}}
+button{{
+  cursor:pointer;
+  background:#242424;
+  font-weight:600;
+}}
+.row{{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:16px;
+}}
+.row a, .row button{{
+  width:auto;
+  min-width:160px;
+  text-align:center;
+}}
+.small{{
+  margin-top:10px;
+  color:#b9b9b9;
+  font-size:.95rem;
+}}
+.ok{{color:#9fd3a8}}
+.err{{color:#e7c27d}}
+.section{{
+  margin-top:22px;
+  padding-top:18px;
+  border-top:1px solid #2c2c2c;
+}}
 </style>
 </head>
 <body>
@@ -1185,7 +1219,7 @@ max-width:100%;
     <div class="section">
       <h2>Skift password</h2>
       <form id="passwordForm">
-        <label>
+        <label id="currentPasswordField">
           Nuværende password
           <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
         </label>
@@ -1218,6 +1252,17 @@ max-width:100%;
 
     const profileStatusEl = document.getElementById("profileStatus");
     const passwordStatusEl = document.getElementById("passwordStatus");
+    window.userMustChangePassword = {str(must_change_password).lower()};
+    const currentPasswordFieldEl = document.getElementById("currentPasswordField");
+    const currentPasswordInputEl = document.getElementById("current_password");
+
+    if (window.userMustChangePassword){{
+      if (currentPasswordFieldEl) currentPasswordFieldEl.style.display = "none";
+      if (currentPasswordInputEl){{
+        currentPasswordInputEl.required = false;
+        currentPasswordInputEl.value = "";
+      }}
+    }}
 
     document.getElementById("profileForm").addEventListener("submit", async (ev) => {{
       ev.preventDefault();
@@ -1258,16 +1303,27 @@ max-width:100%;
       const new_password = document.getElementById("new_password").value;
       const confirm_password = document.getElementById("confirm_password").value;
 
-      try{{
-        const res = await fetch("/api/auth/change-password", {{
-          method: "POST",
-          credentials: "include",
-          headers: {{"Content-Type": "application/json"}},
-          body: JSON.stringify({{
+      const endpoint = window.userMustChangePassword
+        ? "/api/auth/complete-password-reset"
+        : "/api/auth/change-password";
+
+      const payload = window.userMustChangePassword
+        ? {{
+            new_password,
+            confirm_password
+          }}
+        : {{
             current_password,
             new_password,
             confirm_password
-          }})
+          }};
+
+      try{{
+        const res = await fetch(endpoint, {{
+          method: "POST",
+          credentials: "include",
+          headers: {{"Content-Type": "application/json"}},
+          body: JSON.stringify(payload)
         }});
 
         const data = await res.json().catch(() => ({{}}));
