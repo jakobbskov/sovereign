@@ -979,13 +979,7 @@ def register_page():
     }}
     .err{{color:#e7c27d}}
     .linkbtn{{display:block;text-align:center;margin-top:12px}}
-  
-.table-scroll{
-overflow-x:auto;
-max-width:100%;
-}
-
-</style>
+  </style>
 </head>
 <body>
   <div class="card">
@@ -1018,7 +1012,7 @@ max-width:100%;
 
     <a class="linkbtn" href="/login?return_to={return_to_js}">Har du allerede en konto? Log ind</a>
 
-    <div id="status" class="small">Klar.</div>
+    <div id="status" class="small" aria-live="polite"></div>
   </div>
 
   <script>
