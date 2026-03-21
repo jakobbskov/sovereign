@@ -1,7 +1,7 @@
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, parse_qs
 
 from flask import Flask, jsonify, request, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -158,6 +158,29 @@ def get_safe_return_to(default="https://strength.innosocia.dk"):
     if raw.startswith(allowed_prefixes):
         return raw
     return default
+
+
+def get_request_lang(default="da"):
+    lang = str(request.args.get("lang", "")).strip().lower()
+    if lang in ("da", "en"):
+        return lang
+
+    return_to = str(request.args.get("return_to", "")).strip()
+    if return_to:
+        try:
+            parsed = urlparse(return_to)
+            qs = parse_qs(parsed.query)
+            inherited = str((qs.get("lang") or [""])[0]).strip().lower()
+            if inherited in ("da", "en"):
+                return inherited
+        except Exception:
+            pass
+
+    return default
+
+
+def build_auth_query(return_to: str, lang: str) -> str:
+    return f"return_to={quote(return_to, safe=':/?&=%-_~.#')}&lang={quote(lang, safe='')}"
 
 
 def require_admin_auth():
