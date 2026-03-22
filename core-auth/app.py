@@ -1719,7 +1719,7 @@ def admin_users_page():
       <p>Brugeradministration for Sovereign Core Auth.</p>
 
       <div class="row">
-        <a href="/account">Tilbage til konto</a>
+        <a href="/account?lang=__LANG__">Tilbage til konto</a>
       </div>
 
       <div class="toolbar">
