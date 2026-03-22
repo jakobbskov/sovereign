@@ -182,6 +182,106 @@ def get_request_lang(default="da"):
 def build_auth_query(return_to: str, lang: str) -> str:
     return f"return_to={quote(return_to, safe=':/?&=%-_~.#')}&lang={quote(lang, safe='')}"
 
+AUTH_I18N = {
+    "da": {
+        "app_title": "Sovereign Account",
+        "login_title": "Log ind",
+        "login_intro": "Brug din konto til at få adgang til Sovereign-apps.",
+        "username": "Brugernavn",
+        "password": "Password",
+        "login_button": "Log ind",
+        "register_link": "Har du ikke en konto? Opret bruger",
+        "account_link": "Gå til konto",
+        "checking_login": "Tjekker loginstatus…",
+        "status_logging_in": "Logger ind…",
+        "status_login_ok": "Logget ind. Sender videre…",
+        "error_prefix": "Fejl",
+        "not_logged_in_yet": "Ikke logget ind endnu.",
+        "register_title": "Opret bruger",
+        "register_intro": "Opret din centrale konto til Sovereign-apps.",
+        "email": "E-mail",
+        "confirm_password": "Gentag password",
+        "register_button": "Opret bruger",
+        "login_link": "Har du allerede en konto? Log ind",
+        "status_registering": "Opretter bruger…",
+        "status_register_ok": "Bruger oprettet. Sender videre…",
+        "account_intro": "Din centrale konto til Sovereign-suiten.",
+        "not_specified": "ikke angivet",
+        "unknown_value": "ukendt",
+        "role_label": "Rolle",
+        "last_login_label": "Seneste login",
+        "important_label": "Vigtigt",
+        "temporary_password_warning": "Dit password er midlertidigt nulstillet. Du skal vælge et nyt password nu.",
+        "account_details_title": "Konto-oplysninger",
+        "save_account_button": "Gem konto-oplysninger",
+        "ready_status": "Klar.",
+        "change_password_title": "Skift password",
+        "current_password": "Nuværende password",
+        "new_password": "Nyt password",
+        "confirm_new_password": "Gentag nyt password",
+        "change_password_button": "Skift password",
+        "back_to_app": "Tilbage til app",
+        "logout_button": "Log ud",
+        "admin_panel": "Admin-panel",
+        "saving_account_status": "Gemmer konto-oplysninger…",
+        "account_updated_status": "Konto-oplysninger opdateret.",
+        "updating_password_status": "Opdaterer password…",
+        "password_updated_status": "Password opdateret.",
+
+    },
+    "en": {
+        "app_title": "Sovereign Account",
+        "login_title": "Log in",
+        "login_intro": "Use your account to access Sovereign apps.",
+        "username": "Username",
+        "password": "Password",
+        "login_button": "Log in",
+        "register_link": "Don't have an account? Create one",
+        "account_link": "Go to account",
+        "checking_login": "Checking login status…",
+        "status_logging_in": "Logging in…",
+        "status_login_ok": "Logged in. Redirecting…",
+        "error_prefix": "Error",
+        "not_logged_in_yet": "Not logged in yet.",
+        "register_title": "Create account",
+        "register_intro": "Create your central account for Sovereign apps.",
+        "email": "Email",
+        "confirm_password": "Confirm password",
+        "register_button": "Create account",
+        "login_link": "Already have an account? Log in",
+        "status_registering": "Creating account…",
+        "status_register_ok": "Account created. Redirecting…",
+        "account_intro": "Your central account for the Sovereign suite.",
+        "not_specified": "not specified",
+        "unknown_value": "unknown",
+        "role_label": "Role",
+        "last_login_label": "Last login",
+        "important_label": "Important",
+        "temporary_password_warning": "Your password was temporarily reset. You must choose a new password now.",
+        "account_details_title": "Account details",
+        "save_account_button": "Save account details",
+        "ready_status": "Ready.",
+        "change_password_title": "Change password",
+        "current_password": "Current password",
+        "new_password": "New password",
+        "confirm_new_password": "Confirm new password",
+        "change_password_button": "Change password",
+        "back_to_app": "Back to app",
+        "logout_button": "Log out",
+        "admin_panel": "Admin panel",
+        "saving_account_status": "Saving account details…",
+        "account_updated_status": "Account details updated.",
+        "updating_password_status": "Updating password…",
+        "password_updated_status": "Password updated.",
+
+    }
+}
+
+def tr_auth(lang: str, key: str) -> str:
+    lang = lang if lang in AUTH_I18N else "da"
+    return AUTH_I18N.get(lang, AUTH_I18N["da"]).get(key, key)
+
+
 
 def require_admin_auth():
     user, session_row = get_current_auth()
@@ -767,19 +867,22 @@ def root():
 @app.get("/login")
 def login_page():
     return_to = get_safe_return_to()
+    lang = get_request_lang()
+    t = lambda key: tr_auth(lang, key)
+    auth_query = build_auth_query(return_to, lang)
     return_to_js = quote(return_to, safe=":/?&=%-_~.#")
     register_link = (
-        f'<a class="linkbtn" id="registerLink" href="/register?return_to={return_to_js}">Har du ikke en konto? Opret bruger</a>'
+        f'<a class="linkbtn" id="registerLink" href="/register?{auth_query}">{t("register_link")}</a>'
         if ALLOW_REGISTRATION else ""
     )
 
     return f"""
 <!doctype html>
-<html lang="da">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sovereign Login</title>
+  <title>{t("app_title")}</title>
   <style>
     body{{
       margin:0;
@@ -838,28 +941,28 @@ def login_page():
 </head>
 <body>
   <div class="card">
-    <h1>Sovereign Login</h1>
-    <p>Log ind for at fortsætte til din Sovereign-app.</p>
+    <h1>{t("login_title")}</h1>
+    <p>{t("login_intro")}</p>
 
     <form id="loginForm">
       <label>
-        Brugernavn
+        {t("username")}
         <input id="username" name="username" autocomplete="username" required>
       </label>
 
       <label>
-        Password
+        {t("password")}
         <input id="password" name="password" type="password" autocomplete="current-password" required>
       </label>
 
-      <button type="submit">Log ind</button>
+      <button type="submit">{t("login_button")}</button>
     </form>
 
     {register_link}
 
-    <a class="linkbtn" id="accountLink" href="/account?return_to={return_to_js}">Gå til konto</a>
+    <a class="linkbtn" id="accountLink" href="/account?{auth_query}">{t("account_link")}</a>
 
-    <div id="status" class="small">Tjekker loginstatus…</div>
+    <div id="status" class="small">{t("checking_login")}</div>
   </div>
 
   <script>
@@ -884,12 +987,12 @@ def login_page():
       const status = document.getElementById("status");
       const already = await goIfAlreadyLoggedIn();
       if (!already){{
-        status.textContent = "Ikke logget ind endnu.";
+        status.textContent = {t('not_logged_in_yet')!r};
       }}
 
       document.getElementById("loginForm").addEventListener("submit", async (ev) => {{
         ev.preventDefault();
-        status.textContent = "Logger ind…";
+        status.textContent = {t('status_logging_in')!r};
         status.classList.remove("err");
 
         const username = document.getElementById("username").value.trim();
@@ -915,7 +1018,7 @@ def login_page():
         }}
         location.href = returnTo;
         }}catch(err){{
-          status.textContent = "Fejl: " + (err?.message || String(err));
+          status.textContent = {t('error_prefix')!r} + ': ' + (err?.message || String(err));
           status.classList.add("err");
         }}
       }});
@@ -931,11 +1034,14 @@ def login_page():
 @app.get("/register")
 def register_page():
     return_to = get_safe_return_to()
+    lang = get_request_lang()
+    auth_query = build_auth_query(return_to, lang)
     return_to_js = quote(return_to, safe=":/?&=%-_~.#")
+    t = lambda key: tr_auth(lang, key)
 
     if not ALLOW_REGISTRATION:
         return (
-            '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+            '<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<title>Sovereign Register</title></head>'
             '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
@@ -947,7 +1053,7 @@ def register_page():
 
     return f"""
 <!doctype html>
-<html lang="da">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1011,7 +1117,7 @@ def register_page():
 
     <form id="registerForm">
       <label>
-        Brugernavn
+        {t("username")}
         <input id="username" name="username" autocomplete="username" required>
       </label>
 
@@ -1021,19 +1127,19 @@ def register_page():
       </label>
 
       <label>
-        Password
+        {t("password")}
         <input id="password" name="password" type="password" autocomplete="new-password" required>
       </label>
 
       <label>
-        Gentag password
+        {t("confirm_password")}
         <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
       </label>
 
-      <button type="submit">Opret konto</button>
+      <button type="submit">{t("register_button")}</button>
     </form>
 
-    <a class="linkbtn" href="/login?return_to={return_to_js}">Har du allerede en konto? Log ind</a>
+    <a class="linkbtn" href="/login?{auth_query}">{t("login_link")}</a>
 
     <div id="status" class="small" aria-live="polite"></div>
   </div>
@@ -1044,7 +1150,7 @@ def register_page():
 
     document.getElementById("registerForm").addEventListener("submit", async (ev) => {{
       ev.preventDefault();
-      status.textContent = "Opretter bruger…";
+      status.textContent = {t('status_registering')!r};
       status.classList.remove("err");
 
       const username = document.getElementById("username").value.trim();
@@ -1070,10 +1176,10 @@ def register_page():
           throw new Error(data?.error || `HTTP ${{res.status}}`);
         }}
 
-        status.textContent = "Bruger oprettet. Sender videre…";
+        status.textContent = {t('status_register_ok')!r};
         location.href = returnTo;
       }}catch(err){{
-        status.textContent = "Fejl: " + (err?.message || String(err));
+        status.textContent = {t('error_prefix')!r} + ': ' + (err?.message || String(err));
         status.classList.add("err");
       }}
     }});
@@ -1087,180 +1193,189 @@ def register_page():
 def account_page():
     user, session_row = get_current_auth()
     return_to = get_safe_return_to()
+    lang = get_request_lang()
+    t = lambda key: tr_auth(lang, key)
 
     if user is None:
-        login_target = f"/login?return_to={quote(request.url, safe=':/?&=%-_~.#')}"
+        login_target = f"/login?{build_auth_query(request.url, lang)}"
         return (
-            '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+            f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            '<title>Sovereign Account</title></head>'
+            f'<title>{t("app_title")}</title></head>'
             '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-            '<h1>Sovereign Account</h1>'
-            '<p>Du er ikke logget ind.</p>'
-            f'<p><a href="{login_target}" style="color:#9fd3a8">Gå til login</a></p>'
+            f'<h1>{t("app_title")}</h1>'
+            f'<p>{t("not_logged_in_yet")}</p>'
+            f'<p><a href="{login_target}" style="color:#9fd3a8">{t("login_button")}</a></p>'
             '</body></html>'
         )
 
-    return_to_js = quote(return_to, safe=":/?&=%-_~.#")
     username = user["username"]
     email = user["email"] or ""
     role = user["role"]
-    last_login_at = user["last_login_at"] or "ukendt"
+    last_login_at = user["last_login_at"] or t("unknown_value")
     must_change_password = bool(user["must_change_password"])
-    admin_link = '<a id="adminLink" href="/admin/users" style="width:auto;min-width:160px;text-align:center">Admin-panel</a>' if role == "admin" else ""
-    password_warning = '<div class="meta" style="border-color:#6b5522"><div class="line"><strong>Vigtigt:</strong> Dit password er midlertidigt nulstillet. Du skal vælge et nyt password nu.</div></div>' if must_change_password else ""
+
+    admin_link = (
+        f'<a id="adminLink" href="/admin/users?lang={lang}" style="width:auto;min-width:160px;text-align:center">{t("admin_panel")}</a>'
+        if role == "admin" else ""
+    )
+
+    password_warning = (
+        f'<div class="meta" style="border-color:#6b5522"><div class="line"><strong>{t("important_label")}:</strong> {t("temporary_password_warning")}</div></div>'
+        if must_change_password else ""
+    )
 
     return f"""
 <!doctype html>
-<html lang="da">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sovereign Account</title>
+  <title>{t("app_title")}</title>
   <style>
-body{{
-  margin:0;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  background:#111;
-  color:#f3f3f3;
-  display:grid;
-  place-items:center;
-  min-height:100vh;
-  padding:16px 0;
-}}
-.card{{
-  width:min(560px, calc(100vw - 32px));
-  background:#1b1b1b;
-  border:1px solid #2c2c2c;
-  border-radius:16px;
-  padding:20px;
-}}
-h1,h2{{margin:0 0 10px}}
-p{{color:#b9b9b9}}
-.meta{{
-  display:grid;
-  gap:8px;
-  margin:16px 0 22px;
-  padding:14px;
-  border:1px solid #2c2c2c;
-  border-radius:12px;
-  background:#151515;
-}}
-.line{{color:#b9b9b9}}
-.line strong{{color:#f3f3f3}}
-form{{
-  display:grid;
-  gap:12px;
-  margin-top:8px;
-}}
-label{{
-  display:grid;
-  gap:6px;
-  color:#b9b9b9;
-  font-size:.95rem;
-}}
-input,button,a{{
-  width:100%;
-  border-radius:10px;
-  border:1px solid #2c2c2c;
-  background:#151515;
-  color:#f3f3f3;
-  padding:10px 12px;
-  font:inherit;
-  box-sizing:border-box;
-  text-decoration:none;
-}}
-button{{
-  cursor:pointer;
-  background:#242424;
-  font-weight:600;
-}}
-.row{{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  margin-top:16px;
-}}
-.row a, .row button{{
-  width:auto;
-  min-width:160px;
-  text-align:center;
-}}
-.small{{
-  margin-top:10px;
-  color:#b9b9b9;
-  font-size:.95rem;
-}}
-.ok{{color:#9fd3a8}}
-.err{{color:#e7c27d}}
-.section{{
-  margin-top:22px;
-  padding-top:18px;
-  border-top:1px solid #2c2c2c;
-}}
-</style>
+    body{{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      background:#111;
+      color:#f3f3f3;
+      display:grid;
+      place-items:center;
+      min-height:100vh;
+      padding:16px 0;
+    }}
+    .card{{
+      width:min(560px, calc(100vw - 32px));
+      background:#1b1b1b;
+      border:1px solid #2c2c2c;
+      border-radius:16px;
+      padding:20px;
+    }}
+    h1,h2{{margin:0 0 10px}}
+    p{{color:#b9b9b9}}
+    .meta{{
+      display:grid;
+      gap:8px;
+      margin:16px 0 22px;
+      padding:14px;
+      border:1px solid #2c2c2c;
+      border-radius:12px;
+      background:#151515;
+    }}
+    .line{{color:#b9b9b9}}
+    .line strong{{color:#f3f3f3}}
+    form{{
+      display:grid;
+      gap:12px;
+      margin-top:8px;
+    }}
+    label{{
+      display:grid;
+      gap:6px;
+      color:#b9b9b9;
+      font-size:.95rem;
+    }}
+    input,button,a{{
+      width:100%;
+      border-radius:10px;
+      border:1px solid #2c2c2c;
+      background:#151515;
+      color:#f3f3f3;
+      padding:10px 12px;
+      font:inherit;
+      box-sizing:border-box;
+      text-decoration:none;
+    }}
+    button{{
+      cursor:pointer;
+      background:#242424;
+      font-weight:600;
+    }}
+    .row{{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:16px;
+    }}
+    .row a, .row button{{
+      width:auto;
+      min-width:160px;
+      text-align:center;
+    }}
+    .small{{
+      margin-top:10px;
+      color:#b9b9b9;
+      font-size:.95rem;
+    }}
+    .ok{{color:#9fd3a8}}
+    .err{{color:#e7c27d}}
+    .section{{
+      margin-top:22px;
+      padding-top:18px;
+      border-top:1px solid #2c2c2c;
+    }}
+  </style>
 </head>
 <body>
   <div class="card">
-    <h1>Sovereign Account</h1>
-    <p>Din centrale konto til Sovereign-suiten.</p>
+    <h1>{t("app_title")}</h1>
+    <p>{t("account_intro")}</p>
 
     <div class="meta">
-      <div class="line"><strong>Brugernavn:</strong> {username}</div>
-      <div class="line"><strong>E-mail:</strong> {email or "ikke angivet"}</div>
-      <div class="line"><strong>Rolle:</strong> {role}</div>
-      <div class="line"><strong>Seneste login:</strong> {last_login_at}</div>
+      <div class="line"><strong>{t("username")}:</strong> {username}</div>
+      <div class="line"><strong>{t("email")}:</strong> {email or t("not_specified")}</div>
+      <div class="line"><strong>{t("role_label")}:</strong> {role}</div>
+      <div class="line"><strong>{t("last_login_label")}:</strong> {last_login_at}</div>
     </div>
 
     {password_warning}
 
     <div class="section">
-      <h2>Konto-oplysninger</h2>
+      <h2>{t("account_details_title")}</h2>
       <form id="profileForm">
         <label>
-          Brugernavn
+          {t("username")}
           <input id="profile_username" name="profile_username" value="{username}" autocomplete="username" required>
         </label>
 
         <label>
-          E-mail
+          {t("email")}
           <input id="profile_email" name="profile_email" type="email" value="{email}" autocomplete="email">
         </label>
 
-        <button type="submit">Gem konto-oplysninger</button>
+        <button type="submit">{t("save_account_button")}</button>
       </form>
 
-      <div id="profileStatus" class="small">Klar.</div>
+      <div id="profileStatus" class="small">{t("ready_status")}</div>
     </div>
 
     <div class="section">
-      <h2>Skift password</h2>
+      <h2>{t("change_password_title")}</h2>
       <form id="passwordForm">
         <label id="currentPasswordField">
-          Nuværende password
+          {t("current_password")}
           <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
         </label>
 
         <label>
-          Nyt password
+          {t("new_password")}
           <input id="new_password" name="new_password" type="password" autocomplete="new-password" required>
         </label>
 
         <label>
-          Gentag nyt password
+          {t("confirm_new_password")}
           <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
         </label>
 
-        <button type="submit">Skift password</button>
+        <button type="submit">{t("change_password_button")}</button>
       </form>
 
-      <div id="passwordStatus" class="small">Klar.</div>
+      <div id="passwordStatus" class="small">{t("ready_status")}</div>
     </div>
 
     <div class="row">
-      <a id="backLink" href="{return_to_js}">Tilbage til app</a>
+      <a id="backLink" href="{return_to}">{t("back_to_app")}</a>
       {admin_link}
-      <button id="logoutBtn" type="button">Log ud</button>
+      <button id="logoutBtn" type="button">{t("logout_button")}</button>
     </div>
   </div>
 
@@ -1283,7 +1398,7 @@ button{{
 
     document.getElementById("profileForm").addEventListener("submit", async (ev) => {{
       ev.preventDefault();
-      profileStatusEl.textContent = "Gemmer konto-oplysninger…";
+      profileStatusEl.textContent = {t("saving_account_status")!r};
       profileStatusEl.className = "small";
 
       const username = document.getElementById("profile_username").value.trim();
@@ -1302,18 +1417,18 @@ button{{
           throw new Error(data?.error || `HTTP ${{res.status}}`);
         }}
 
-        profileStatusEl.textContent = data?.message || "Konto-oplysninger opdateret.";
+        profileStatusEl.textContent = data?.message || {t("account_updated_status")!r};
         profileStatusEl.className = "small ok";
         location.reload();
       }}catch(err){{
-        profileStatusEl.textContent = "Fejl: " + (err?.message || String(err));
+        profileStatusEl.textContent = {t("error_prefix")!r} + ": " + (err?.message || String(err));
         profileStatusEl.className = "small err";
       }}
     }});
 
     document.getElementById("passwordForm").addEventListener("submit", async (ev) => {{
       ev.preventDefault();
-      passwordStatusEl.textContent = "Opdaterer password…";
+      passwordStatusEl.textContent = {t("updating_password_status")!r};
       passwordStatusEl.className = "small";
 
       const current_password = document.getElementById("current_password").value;
@@ -1348,11 +1463,11 @@ button{{
           throw new Error(data?.error || `HTTP ${{res.status}}`);
         }}
 
-        passwordStatusEl.textContent = data?.message || "Password opdateret.";
+        passwordStatusEl.textContent = data?.message || {t("password_updated_status")!r};
         passwordStatusEl.className = "small ok";
         document.getElementById("passwordForm").reset();
       }}catch(err){{
-        passwordStatusEl.textContent = "Fejl: " + (err?.message || String(err));
+        passwordStatusEl.textContent = {t("error_prefix")!r} + ": " + (err?.message || String(err));
         passwordStatusEl.className = "small err";
       }}
     }});
@@ -1364,13 +1479,13 @@ button{{
           credentials: "include"
         }});
       }}catch(err){{}}
-      location.href = `/login?return_to=${{encodeURIComponent(returnTo)}}`;
+      location.href = `/login?return_to=${{encodeURIComponent(returnTo)}}&lang={lang}`;
     }});
   </script>
 </body>
 </html>
-"""
 
+"""
 
 @app.get("/admin/users")
 def admin_users_page():
