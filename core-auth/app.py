@@ -180,7 +180,7 @@ def get_request_lang(default="da"):
 
 
 def build_auth_query(return_to: str, lang: str) -> str:
-    return f"return_to={quote(return_to, safe=':/?&=%-_~.#')}&lang={quote(lang, safe='')}"
+    return f"return_to={quote(return_to, safe=':/?=%-_~.#')}&lang={quote(lang, safe='')}"
 
 AUTH_I18N = {
     "da": {
@@ -1221,7 +1221,7 @@ def account_page():
     t = lambda key: tr_auth(lang, key)
 
     if user is None:
-        login_target = f"/login?{build_auth_query(request.url, lang)}"
+        login_target = f"/login?{build_auth_query(request.base_url + f'?lang={lang}', lang)}"
         return (
             f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -1540,9 +1540,9 @@ def admin_users_page():
             '</body></html>'
         )
 
-    return """
+    admin_html = """
 <!doctype html>
-  <html lang="da">
+  <html lang="__LANG__">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1783,18 +1783,18 @@ def admin_users_page():
         const nextStatus = user.is_active ? "false" : "true";
 
         return `
-          <tr data-user-id="${{esc(user.id)}}">
-            <td>${{esc(user.id)}}</td>
-            <td>${{esc(user.username)}}</td>
-            <td>${{esc(user.email || "")}}</td>
-            <td>${{esc(user.role)}}</td>
-            <td>${{user.is_active ? "aktiv" : "inaktiv"}}</td>
-            <td>${{esc(user.created_at || "")}}</td>
-            <td>${{esc(user.last_login_at || "")}}</td>
+          <tr data-user-id="${esc(user.id)}">
+            <td>${esc(user.id)}</td>
+            <td>${esc(user.username)}</td>
+            <td>${esc(user.email || "")}</td>
+            <td>${esc(user.role)}</td>
+            <td>${user.is_active ? "aktiv" : "inaktiv"}</td>
+            <td>${esc(user.created_at || "")}</td>
+            <td>${esc(user.last_login_at || "")}</td>
             <td>
               <div class="actions">
-                <button type="button" data-action="role" data-role="${{esc(nextRole)}}">${{esc(roleBtnLabel)}}</button>
-                <button type="button" data-action="status" data-active="${{esc(nextStatus)}}">${{esc(statusBtnLabel)}}</button>
+                <button type="button" data-action="role" data-role="${esc(nextRole)}">${esc(roleBtnLabel)}</button>
+                <button type="button" data-action="status" data-active="${esc(nextStatus)}">${esc(statusBtnLabel)}</button>
                 <button type="button" data-action="reset-password">Nulstil password</button>
               </div>
             </td>
@@ -1803,7 +1803,7 @@ def admin_users_page():
       }).join("");
 
       bindRowActions();
-      statusEl.textContent = `${{items.length}} bruger(e) vist.`;
+      statusEl.textContent = `${items.length} bruger(e) vist.`;
       statusEl.className = "small ok";
     }
 
@@ -1813,7 +1813,7 @@ def admin_users_page():
       const status = statusFilterEl.value;
 
       return ALL_USERS.filter(user => {
-        const haystack = `${{user.username || ""}} ${{user.email || ""}}`.toLowerCase();
+        const haystack = `${user.username || ""} ${user.email || ""}`.toLowerCase();
         if (q && !haystack.includes(q)) return false;
         if (role && user.role !== role) return false;
         if (status === "active" && !user.is_active) return false;
@@ -1838,7 +1838,7 @@ def admin_users_page():
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok){
-          throw new Error(data?.error || `HTTP ${{res.status}}`);
+          throw new Error(data?.error || `HTTP ${res.status}`);
         }
 
         ALL_USERS = Array.isArray(data?.items) ? data.items : [];
@@ -1862,7 +1862,7 @@ def admin_users_page():
           statusEl.className = "small";
 
           try{
-            const res = await fetch(`/api/admin/users/${{userId}}/role`, {
+            const res = await fetch(`/api/admin/users/${userId}/role`, {
               method: "POST",
               credentials: "include",
               headers: {"Content-Type": "application/json"},
@@ -1871,7 +1871,7 @@ def admin_users_page():
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok){
-              throw new Error(data?.error || `HTTP ${{res.status}}`);
+              throw new Error(data?.error || `HTTP ${res.status}`);
             }
 
             await loadUsers();
@@ -1892,7 +1892,7 @@ def admin_users_page():
           statusEl.className = "small";
 
           try{
-            const res = await fetch(`/api/admin/users/${{userId}}/status`, {
+            const res = await fetch(`/api/admin/users/${userId}/status`, {
               method: "POST",
               credentials: "include",
               headers: {"Content-Type": "application/json"},
@@ -1901,7 +1901,7 @@ def admin_users_page():
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok){
-              throw new Error(data?.error || `HTTP ${{res.status}}`);
+              throw new Error(data?.error || `HTTP ${res.status}`);
             }
 
             await loadUsers();
@@ -1921,7 +1921,7 @@ def admin_users_page():
           statusEl.className = "small";
 
           try{
-            const res = await fetch(`/api/admin/users/${{userId}}/reset-password`, {
+            const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
               method: "POST",
               credentials: "include",
               headers: {"Content-Type": "application/json"},
@@ -1930,10 +1930,10 @@ def admin_users_page():
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok){
-              throw new Error(data?.error || `HTTP ${{res.status}}`);
+              throw new Error(data?.error || `HTTP ${res.status}`);
             }
 
-            const username = data?.user?.username || `#${{userId}}`;
+            const username = data?.user?.username || `#${userId}`;
             const tempPassword = data?.temporary_password || "";
             statusEl.textContent = `Midlertidigt password for ${username}: ${tempPassword}`;
             statusEl.className = "small ok";
@@ -1954,6 +1954,50 @@ def admin_users_page():
 </body>
 </html>
 """
+
+    admin_html = admin_html.replace("__LANG__", lang)
+
+    if lang == "en":
+        replacements = [
+            ("Brugeradministration for Sovereign Core Auth.", "User administration for Sovereign Core Auth."),
+            ("Tilbage til konto", "Back to account"),
+            ("Søg på brugernavn eller e-mail", "Search by username or email"),
+            ("Alle roller", "All roles"),
+            ("Kun admins", "Admins only"),
+            ("Kun users", "Users only"),
+            ("Alle statuser", "All statuses"),
+            ("Kun aktive", "Active only"),
+            ("Kun inaktive", "Inactive only"),
+            ("Indlæser brugere…", "Loading users…"),
+            ("Brugernavn:", "Username:"),
+            ("E-mail:", "Email:"),
+            ("Rolle:", "Role:"),
+            ("Status:", "Status:"),
+            ("Handlinger:", "Actions:"),
+            ("Brugernavn", "Username"),
+            ("E-mail", "Email"),
+            ("Rolle", "Role"),
+            ("Status", "Status"),
+            ("Oprettet", "Created"),
+            ("Seneste login", "Last login"),
+            ("Handlinger", "Actions"),
+            ("Gør user", "Make user"),
+            ("Gør admin", "Make admin"),
+            ("Deaktivér", "Deactivate"),
+            ("Aktivér", "Activate"),
+            ("Nulstil password", "Reset password"),
+            ("bruger(e) vist.", "user(s) shown."),
+            ("Indlæser brugere…", "Loading users…"),
+            ("aktiv", "active"),
+            ("inaktiv", "inactive"),
+            ("Fejl: ", "Error: "),
+            ("Midlertidigt password for", "Temporary password for"),
+        ]
+        for old, new in replacements:
+            admin_html = admin_html.replace(old, new)
+
+    return admin_html
+
 
 
 
