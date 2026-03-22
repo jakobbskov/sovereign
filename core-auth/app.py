@@ -227,6 +227,17 @@ AUTH_I18N = {
         "account_updated_status": "Konto-oplysninger opdateret.",
         "updating_password_status": "Opdaterer password…",
         "password_updated_status": "Password opdateret.",
+        "root_title": "Sovereign Core Auth",
+        "root_status": "Auth-service kører.",
+        "go_to_login": "Gå til login",
+        "go_to_account": "Gå til konto",
+        "go_to_admin": "Gå til admin",
+        "create_user": "Opret bruger",
+        "admin_title": "Sovereign Admin",
+        "admin_intro": "Brugeradministration for Sovereign Core Auth.",
+        "access_denied": "Adgang nægtet.",
+        "resetting_password": "Nulstiller password…",
+        "temporary_password_for": "Midlertidigt password for",
 
     },
     "en": {
@@ -273,6 +284,17 @@ AUTH_I18N = {
         "account_updated_status": "Account details updated.",
         "updating_password_status": "Updating password…",
         "password_updated_status": "Password updated.",
+        "root_title": "Sovereign Core Auth",
+        "root_status": "Auth service is running.",
+        "go_to_login": "Go to login",
+        "go_to_account": "Go to account",
+        "go_to_admin": "Go to admin",
+        "create_user": "Create account",
+        "admin_title": "Sovereign Admin",
+        "admin_intro": "User administration for Sovereign Core Auth.",
+        "access_denied": "Access denied.",
+        "resetting_password": "Resetting password…",
+        "temporary_password_for": "Temporary password for",
 
     }
 }
@@ -849,17 +871,19 @@ def auth_update_profile():
 
 @app.get("/")
 def root():
+    lang = get_request_lang()
+    t = lambda key: tr_auth(lang, key)
     return (
-        '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+        f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<title>Sovereign Core Auth</title></head>'
+        f'<title>{t("root_title")}</title></head>'
         '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-        '<h1>Sovereign Core Auth</h1>'
-        '<p>Auth-service kører.</p>'
-        '<p><a href="/login" style="color:#9fd3a8">Gå til login</a></p>'
-        '<p><a href="/account" style="color:#9fd3a8">Gå til konto</a></p>'
-        '<p><a href="/admin/users" style="color:#9fd3a8">Gå til admin</a></p>'
-        '<p><a href="/register" style="color:#9fd3a8">Opret bruger</a></p>'
+        f'<h1>{t("root_title")}</h1>'
+        f'<p>{t("root_status")}</p>'
+        f'<p><a href="/login?lang={lang}" style="color:#9fd3a8">{t("go_to_login")}</a></p>'
+        f'<p><a href="/account?lang={lang}" style="color:#9fd3a8">{t("go_to_account")}</a></p>'
+        f'<p><a href="/admin/users?lang={lang}" style="color:#9fd3a8">{t("go_to_admin")}</a></p>'
+        f'<p><a href="/register?lang={lang}" style="color:#9fd3a8">{t("create_user")}</a></p>'
         '</body></html>'
     )
 
@@ -1489,34 +1513,36 @@ def account_page():
 
 @app.get("/admin/users")
 def admin_users_page():
+    lang = get_request_lang()
+    t = lambda key: tr_auth(lang, key)
     admin_user, err_response, status = require_admin_auth()
     if err_response is not None:
         if status == 401:
-            login_target = f"/login?return_to={quote(request.url, safe=':/?&=%-_~.#')}"
+            login_target = f"/login?{build_auth_query(request.url, lang)}"
             return (
-                '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+                f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width,initial-scale=1">'
-                '<title>Sovereign Admin</title></head>'
+                f'<title>Sovereign Admin</title></head>'
                 '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-                '<h1>Sovereign Admin</h1>'
-                '<p>Du er ikke logget ind.</p>'
-                f'<p><a href="{login_target}" style="color:#9fd3a8">Gå til login</a></p>'
+                f'<h1>Sovereign Admin</h1>'
+                f'<p>{t("not_logged_in_yet")}</p>'
+                f'<p><a href="{login_target}" style="color:#9fd3a8">{t("go_to_login")}</a></p>'
                 '</body></html>'
             )
         return (
-            '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+            f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            '<title>Sovereign Admin</title></head>'
+            f'<title>Sovereign Admin</title></head>'
             '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-            '<h1>Sovereign Admin</h1>'
-            '<p>Adgang nægtet.</p>'
-            '<p><a href="/account" style="color:#9fd3a8">Gå til konto</a></p>'
+            f'<h1>Sovereign Admin</h1>'
+            f'<p>{t("access_denied")}</p>'
+            f'<p><a href="/account?lang={lang}" style="color:#9fd3a8">{t("go_to_account")}</a></p>'
             '</body></html>'
         )
 
     return """
 <!doctype html>
-<html lang="da">
+  <html lang="da">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1757,18 +1783,18 @@ def admin_users_page():
         const nextStatus = user.is_active ? "false" : "true";
 
         return `
-          <tr data-user-id="${esc(user.id)}">
-            <td>${esc(user.id)}</td>
-            <td>${esc(user.username)}</td>
-            <td>${esc(user.email || "")}</td>
-            <td>${esc(user.role)}</td>
-            <td>${user.is_active ? "aktiv" : "inaktiv"}</td>
-            <td>${esc(user.created_at || "")}</td>
-            <td>${esc(user.last_login_at || "")}</td>
+          <tr data-user-id="${{esc(user.id)}}">
+            <td>${{esc(user.id)}}</td>
+            <td>${{esc(user.username)}}</td>
+            <td>${{esc(user.email || "")}}</td>
+            <td>${{esc(user.role)}}</td>
+            <td>${{user.is_active ? "aktiv" : "inaktiv"}}</td>
+            <td>${{esc(user.created_at || "")}}</td>
+            <td>${{esc(user.last_login_at || "")}}</td>
             <td>
               <div class="actions">
-                <button type="button" data-action="role" data-role="${esc(nextRole)}">${esc(roleBtnLabel)}</button>
-                <button type="button" data-action="status" data-active="${esc(nextStatus)}">${esc(statusBtnLabel)}</button>
+                <button type="button" data-action="role" data-role="${{esc(nextRole)}}">${{esc(roleBtnLabel)}}</button>
+                <button type="button" data-action="status" data-active="${{esc(nextStatus)}}">${{esc(statusBtnLabel)}}</button>
                 <button type="button" data-action="reset-password">Nulstil password</button>
               </div>
             </td>
@@ -1777,7 +1803,7 @@ def admin_users_page():
       }).join("");
 
       bindRowActions();
-      statusEl.textContent = `${items.length} bruger(e) vist.`;
+      statusEl.textContent = `${{items.length}} bruger(e) vist.`;
       statusEl.className = "small ok";
     }
 
@@ -1787,7 +1813,7 @@ def admin_users_page():
       const status = statusFilterEl.value;
 
       return ALL_USERS.filter(user => {
-        const haystack = `${user.username || ""} ${user.email || ""}`.toLowerCase();
+        const haystack = `${{user.username || ""}} ${{user.email || ""}}`.toLowerCase();
         if (q && !haystack.includes(q)) return false;
         if (role && user.role !== role) return false;
         if (status === "active" && !user.is_active) return false;
@@ -1812,7 +1838,7 @@ def admin_users_page():
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok){
-          throw new Error(data?.error || `HTTP ${res.status}`);
+          throw new Error(data?.error || `HTTP ${{res.status}}`);
         }
 
         ALL_USERS = Array.isArray(data?.items) ? data.items : [];
@@ -1836,7 +1862,7 @@ def admin_users_page():
           statusEl.className = "small";
 
           try{
-            const res = await fetch(`/api/admin/users/${userId}/role`, {
+            const res = await fetch(`/api/admin/users/${{userId}}/role`, {
               method: "POST",
               credentials: "include",
               headers: {"Content-Type": "application/json"},
@@ -1845,7 +1871,7 @@ def admin_users_page():
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok){
-              throw new Error(data?.error || `HTTP ${res.status}`);
+              throw new Error(data?.error || `HTTP ${{res.status}}`);
             }
 
             await loadUsers();
@@ -1866,7 +1892,7 @@ def admin_users_page():
           statusEl.className = "small";
 
           try{
-            const res = await fetch(`/api/admin/users/${userId}/status`, {
+            const res = await fetch(`/api/admin/users/${{userId}}/status`, {
               method: "POST",
               credentials: "include",
               headers: {"Content-Type": "application/json"},
@@ -1875,7 +1901,7 @@ def admin_users_page():
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok){
-              throw new Error(data?.error || `HTTP ${res.status}`);
+              throw new Error(data?.error || `HTTP ${{res.status}}`);
             }
 
             await loadUsers();
@@ -1895,7 +1921,7 @@ def admin_users_page():
           statusEl.className = "small";
 
           try{
-            const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+            const res = await fetch(`/api/admin/users/${{userId}}/reset-password`, {
               method: "POST",
               credentials: "include",
               headers: {"Content-Type": "application/json"},
@@ -1904,10 +1930,10 @@ def admin_users_page():
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok){
-              throw new Error(data?.error || `HTTP ${res.status}`);
+              throw new Error(data?.error || `HTTP ${{res.status}}`);
             }
 
-            const username = data?.user?.username || `#${userId}`;
+            const username = data?.user?.username || `#${{userId}}`;
             const tempPassword = data?.temporary_password || "";
             statusEl.textContent = `Midlertidigt password for ${username}: ${tempPassword}`;
             statusEl.className = "small ok";
