@@ -38,6 +38,7 @@ ALLOWED_ORIGINS = {
     "https://strength.innosocia.dk",
     "https://plants.innosocia.dk",
     "https://finance.innosocia.dk",
+    "https://apps.innosocia.dk",
     "https://auth.innosocia.dk",
 }
 
@@ -153,6 +154,7 @@ def get_safe_return_to(default="https://strength.innosocia.dk"):
         "https://strength.innosocia.dk",
         "https://plants.innosocia.dk",
         "https://finance.innosocia.dk",
+        "https://apps.innosocia.dk",
         "https://auth.innosocia.dk",
     )
     if raw.startswith(allowed_prefixes):
