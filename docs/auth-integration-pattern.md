@@ -7,6 +7,52 @@ The goal is to keep authentication behavior consistent across the Sovereign ecos
 
 Authentication is treated as shared platform infrastructure, not as app-local invention.
 
+## Central app entitlements
+
+Authentication identifies an active user with a valid Core Auth session. App
+entitlements separately describe which Sovereign apps that user may access.
+A valid session, including an admin session, does not imply app access.
+
+Core Auth stores a general `apps` catalog (`id`, unique machine `key`, display
+`name`, `created_at`) and explicit `user_apps` relations (`user_id`, `app_id`,
+`created_at`). The relation has a composite primary key and cascading foreign
+keys. There are no per-app boolean columns or username/email-based grants.
+The registered key for Sovereign Writer is `writer`. Registration alone grants
+nobody access; all existing users start with an empty set after migration.
+
+`GET /api/auth/validate` preserves its existing successful fields:
+`ok: true`, `authenticated: true`, `user_id`, `username`, and `role`.
+It additionally always returns `entitlements` as a sorted, duplicate-free JSON
+array of app keys on HTTP 200. It is `[]` without explicit grants and
+`["writer"]` when Writer is the only grant. Admins have exactly the same rule.
+
+Missing, expired, revoked, or inactive-user sessions retain HTTP 401 with
+`{"ok": false, "authenticated": false}`. Database failures during validation
+return HTTP 503 with
+`{"ok": false, "authenticated": false, "error": "auth unavailable"}`,
+without an `entitlements` field or internal error details. A lookup failure
+must never be interpreted as an empty entitlement set or allowed access.
+
+Participating app backends must validate the session and require their exact
+key for protected app access. A valid session without the required key means
+HTTP 403; an invalid session means HTTP 401. Unavailable Core Auth or a missing
+or malformed entitlement field must fail closed as a service/contract failure.
+No frontend-only checks or implicit admin wildcard access are permitted.
+Existing integrations retain their current identity fields, but must separately
+adopt entitlement enforcement; this Core Auth change does not update them.
+
+An active admin manages grants at `/admin/users`: choose a user, click
+**Vis appadgang**, then **Tildel** or **Tilbagekald** beside **Sovereign Writer
+(writer)**. Click **Vis appadgang** again to verify. Both operations are
+idempotent. The corresponding API, session-bound CSRF requirements, migration,
+backup/recovery commands, future app registration, and deployment order are
+documented in [Core Auth operations](../core-auth/README.md).
+
+Deploy and migrate Core Auth first, explicitly grant the owner/developer
+account `writer`, and verify its validate response before deploying Writer
+code that requires this field. No deployment step may automatically grant
+access to existing users.
+
 ## Scope
 
 This document applies to Sovereign applications that:
@@ -185,7 +231,7 @@ reason: auth_unavailable
 
 Forbidden
 
-If an app later needs app-local authorization beyond shared authentication, this should be treated separately from session validity.
+Central app entitlements and any additional app-local authorization are checked separately from session validity.
 
 Recommended behavior:
 
