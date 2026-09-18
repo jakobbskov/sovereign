@@ -1,5 +1,7 @@
 import sys
+import sqlite3
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
@@ -12,7 +14,17 @@ import app as auth
 @pytest.fixture(autouse=True)
 def isolated_database(tmp_path, monkeypatch):
     # No initialization at import time; every test points to its own temporary file.
+    original_connect = sqlite3.connect
+    def isolated_connect(database, *args, **kwargs):
+        location = str(database)
+        if location.startswith("file:"):
+            location = unquote(urlsplit(location).path)
+        if not Path(location).resolve().is_relative_to(tmp_path.resolve()):
+            raise AssertionError("Tests may only open databases inside their temporary directory")
+        return original_connect(database, *args, **kwargs)
+    monkeypatch.setattr(sqlite3, "connect", isolated_connect)
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "auth-test.sqlite")
+    db.DB_PATH.touch()
     db.init_db()
     auth.app.config.update(TESTING=True)
     return db.DB_PATH

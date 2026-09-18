@@ -18,7 +18,8 @@ core-auth/.venv/bin/python -m pytest core-auth/tests -q
 ```
 
 Tests use temporary database files under ignored `core-auth/.pytest-tmp/`,
-replace the database path before initialization, and make no network requests.
+replace the database path before initialization, reject connections outside each
+test's temporary directory, and make no network requests.
 They never write `core-auth/auth.db`. There was no pre-existing test suite;
 the suite covers schema/migration, validation, administration, and existing
 login/session/profile/password/CORS integrations through Flask's test client.
@@ -27,12 +28,18 @@ For a disposable local instance, choose a new database explicitly:
 
 ```sh
 export CORE_AUTH_DB_PATH="$PWD/core-auth/local-test.sqlite"
+core-auth/.venv/bin/python core-auth/db.py --database "$CORE_AUTH_DB_PATH" init
 core-auth/.venv/bin/python core-auth/app.py
 ```
 
-The direct entry point initializes/migrates the selected database before
-serving. Do not stage local database files. Without `CORE_AUTH_DB_PATH`, the
-historical default remains `core-auth/auth.db`.
+The explicit `init` command creates a new file with mode 0600 and refuses an
+existing file. If schema initialization fails, the empty file may remain;
+investigate the error and use `migrate` to retry. The direct entry point migrates
+the selected existing database before serving. Imports, normal connections,
+bootstrap requests, and migration never create missing database files. A missing
+database fails closed rather than creating a replacement empty auth store.
+Do not stage local database files. Without `CORE_AUTH_DB_PATH`, the historical
+default path remains `core-auth/auth.db`, but the file must already exist.
 
 A WSGI server imports the app without applying the schema:
 
@@ -55,9 +62,9 @@ reverse lookups and cascades. The existing sessions-to-users foreign key keeps
 its original deletion behavior; removing a user with sessions still requires
 handling those sessions first.
 
-All application connections enable and verify SQLite foreign keys. New
-entitlement operations explicitly commit/rollback and always close their
-connections, including on error.
+All application connections enable and verify SQLite foreign keys. Database
+helpers explicitly commit/rollback writes and always close their connections,
+including on error. Connections use SQLite `mode=rw` to require an existing file.
 
 There was no migration framework. `init_db()` now applies the additive,
 idempotent `schema.sql` inside `BEGIN IMMEDIATE`, runs `foreign_key_check`, then
@@ -146,6 +153,14 @@ Tokens are compared to the current session with constant-time comparison.
 Admin responses are `Cache-Control: no-store` and intentionally have no CORS
 permission, including for sibling apps, so those apps cannot read admin tokens.
 Existing non-admin auth CORS behavior is preserved.
+
+Login/account/register return destinations require an exact trusted origin,
+and values embedded in scripts are serialized as HTML-safe JSON. Account fields
+are HTML-escaped, and entitlement labels use DOM `textContent`. This prevents
+injected scripts on the auth origin from bypassing the session-bound CSRF check.
+The CSRF token remains stored in the existing `sessions.csrf_token` field by
+design; it is not an extra entitlement record and must not be logged or exposed
+outside the active admin's non-cacheable token endpoint.
 
 Both grant and revoke return HTTP 200 with `ok`, target `user_id`, and the current
 sorted `entitlements`, even if already granted/revoked. Only existing apps/users

@@ -2,10 +2,12 @@ import sqlite3
 import subprocess
 import sys
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 
 import db
+import app as auth
 
 
 def test_new_database_and_catalog():
@@ -16,14 +18,22 @@ def test_new_database_and_catalog():
     assert db.list_apps() == [{"key": "writer", "name": "Sovereign Writer"}]
 
 
-def test_existing_database_migration(isolated_database, users):
-    db.insert_session(users["user"], "test-session", "test-csrf", "created", "expires", "seen", None, None)
+def test_existing_database_migration(tmp_path, monkeypatch, client):
+    legacy = tmp_path / "legacy.sqlite"
+    old_schema = Path(__file__).parent / "fixtures" / "schema_136e3c9.sql"
+    with closing(sqlite3.connect(legacy)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.executescript(old_schema.read_text())
+    monkeypatch.setattr(db, "DB_PATH", legacy)
+    users = {
+        role: db.insert_user(role, None, auth.generate_password_hash("test-password-long"), role, auth.now_utc_iso())
+        for role in ("admin", "user")
+    }
+    assert client.post("/api/auth/login", json={"username": "user", "password": "test-password-long"}).status_code == 200
     with closing(db.get_db()) as conn:
         before_users = [tuple(row) for row in conn.execute("SELECT * FROM users")]
         before_sessions = [tuple(row) for row in conn.execute("SELECT * FROM sessions")]
-        conn.execute("DROP TABLE user_apps")
-        conn.execute("DROP TABLE apps")
-        conn.commit()
+        assert conn.execute("SELECT name FROM sqlite_master WHERE name IN ('apps', 'user_apps')").fetchall() == []
     db.init_db()
     db.init_db()
     with closing(db.get_db()) as conn:
@@ -31,6 +41,10 @@ def test_existing_database_migration(isolated_database, users):
         assert [tuple(row) for row in conn.execute("SELECT * FROM sessions")] == before_sessions
     assert db.list_apps() == [{"key": "writer", "name": "Sovereign Writer"}]
     assert all(db.list_user_entitlements(user_id) == [] for user_id in users.values())
+    response = client.get("/api/auth/validate")
+    assert response.status_code == 200
+    assert response.json == {"ok": True, "authenticated": True, "user_id": users["user"],
+                             "username": "user", "role": "user", "entitlements": []}
 
 
 @pytest.mark.parametrize("key", ["", "Writer", "1writer", "a b", "é", "a/", "a" * 65, "a\x00b"])

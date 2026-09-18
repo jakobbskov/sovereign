@@ -2,9 +2,11 @@ import os
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from flask import Flask, jsonify, request, make_response
+from jinja2.utils import htmlsafe_json_dumps
+from markupsafe import escape
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from db import (
@@ -162,14 +164,14 @@ def get_safe_return_to(default="https://strength.innosocia.dk"):
     if not raw:
         return default
 
-    allowed_prefixes = (
-        "https://strength.innosocia.dk",
-        "https://plants.innosocia.dk",
-        "https://finance.innosocia.dk",
-        "https://apps.innosocia.dk",
-        "https://auth.innosocia.dk",
-    )
-    if raw.startswith(allowed_prefixes):
+    # Reject browser/parser ambiguities before checking the exact trusted origin.
+    if "\\" in raw or any(ord(char) < 32 or ord(char) == 127 for char in raw):
+        return default
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return default
+    if f"{parsed.scheme}://{parsed.netloc}" in ALLOWED_ORIGINS:
         return raw
     return default
 
@@ -916,7 +918,7 @@ def login_page():
   </div>
 
   <script>
-    const returnTo = {return_to!r};
+    const returnTo = {htmlsafe_json_dumps(return_to)};
 
     async function goIfAlreadyLoggedIn(){{
       try{{
@@ -1092,7 +1094,7 @@ def register_page():
   </div>
 
   <script>
-    const returnTo = {return_to!r};
+    const returnTo = {htmlsafe_json_dumps(return_to)};
     const status = document.getElementById("status");
 
     document.getElementById("registerForm").addEventListener("submit", async (ev) => {{
@@ -1155,10 +1157,10 @@ def account_page():
         )
 
     return_to_js = quote(return_to, safe=":/?&=%-_~.#")
-    username = user["username"]
-    email = user["email"] or ""
-    role = user["role"]
-    last_login_at = user["last_login_at"] or "ukendt"
+    username = escape(user["username"])
+    email = escape(user["email"] or "")
+    role = escape(user["role"])
+    last_login_at = escape(user["last_login_at"] or "ukendt")
     must_change_password = bool(user["must_change_password"])
     admin_link = '<a id="adminLink" href="/admin/users" style="width:auto;min-width:160px;text-align:center">Admin-panel</a>' if role == "admin" else ""
     password_warning = '<div class="meta" style="border-color:#6b5522"><div class="line"><strong>Vigtigt:</strong> Dit password er midlertidigt nulstillet. Du skal vælge et nyt password nu.</div></div>' if must_change_password else ""
@@ -1318,7 +1320,7 @@ button{{
   </div>
 
   <script>
-    const returnTo = {return_to!r};
+    const returnTo = {htmlsafe_json_dumps(return_to)};
 
     const profileStatusEl = document.getElementById("profileStatus");
     const passwordStatusEl = document.getElementById("passwordStatus");
