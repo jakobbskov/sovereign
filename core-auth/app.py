@@ -1,9 +1,12 @@
 import os
 import secrets
+import sqlite3
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from flask import Flask, jsonify, request, make_response
+from jinja2.utils import htmlsafe_json_dumps
+from markupsafe import escape
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from db import (
@@ -24,6 +27,11 @@ from db import (
     get_session_by_token,
     revoke_session,
     touch_session,
+    list_apps,
+    list_user_entitlements,
+    grant_user_entitlement,
+    revoke_user_entitlement,
+    validate_user_id,
 )
 
 app = Flask(__name__)
@@ -45,6 +53,11 @@ ALLOWED_ORIGINS = {
 
 @app.after_request
 def add_cors_headers(response):
+    if request.path.startswith("/api/admin/") or request.path == "/admin/users":
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    if request.path == "/api/auth/validate":
+        response.headers["Cache-Control"] = "no-store"
     origin = request.headers.get("Origin", "")
     if origin in ALLOWED_ORIGINS:
         response.headers["Access-Control-Allow-Origin"] = origin
@@ -57,7 +70,7 @@ def add_cors_headers(response):
 def cors_preflight(_any):
     origin = request.headers.get("Origin", "")
     response = make_response("", 204)
-    if origin in ALLOWED_ORIGINS:
+    if origin in ALLOWED_ORIGINS and not _any.startswith("admin/"):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
@@ -78,7 +91,8 @@ def parse_iso_datetime(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
+        return parsed if parsed.tzinfo is not None else None
     except Exception:
         return None
 
@@ -150,14 +164,14 @@ def get_safe_return_to(default="https://strength.innosocia.dk"):
     if not raw:
         return default
 
-    allowed_prefixes = (
-        "https://strength.innosocia.dk",
-        "https://plants.innosocia.dk",
-        "https://finance.innosocia.dk",
-        "https://apps.innosocia.dk",
-        "https://auth.innosocia.dk",
-    )
-    if raw.startswith(allowed_prefixes):
+    # Reject browser/parser ambiguities before checking the exact trusted origin.
+    if "\\" in raw or any(ord(char) < 32 or ord(char) == 127 for char in raw):
+        return default
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return default
+    if f"{parsed.scheme}://{parsed.netloc}" in ALLOWED_ORIGINS:
         return raw
     return default
 
@@ -175,6 +189,13 @@ def require_admin_auth():
             "ok": False,
             "error": "forbidden"
         }), 403
+
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        supplied = request.headers.get("X-CSRF-Token", "")
+        if not supplied or not secrets.compare_digest(
+            supplied.encode("utf-8"), session_row["csrf_token"].encode("utf-8")
+        ):
+            return None, jsonify({"ok": False, "error": "invalid csrf token"}), 403
 
     return user, None, None
 
@@ -247,7 +268,11 @@ def auth_me():
 
 @app.get("/api/auth/validate")
 def auth_validate():
-    user, session_row = get_current_auth()
+    try:
+        user, session_row = get_current_auth()
+        entitlements = list_user_entitlements(user["id"]) if user is not None else None
+    except (sqlite3.Error, LookupError):
+        return jsonify({"ok": False, "authenticated": False, "error": "auth unavailable"}), 503
     if user is None:
         return jsonify({
             "ok": False,
@@ -260,7 +285,58 @@ def auth_validate():
         "user_id": user["id"],
         "username": user["username"],
         "role": user["role"],
+        "entitlements": entitlements,
     }), 200
+
+
+@app.errorhandler(sqlite3.Error)
+def database_unavailable(error):
+    return jsonify({"ok": False, "error": "service unavailable"}), 503
+
+
+@app.get("/api/admin/csrf")
+def api_admin_csrf():
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        return err_response, status
+    session_row = get_session_by_token(request.cookies.get(SESSION_COOKIE_NAME))
+    if session_row is None:
+        return jsonify({"ok": False, "error": "not authenticated"}), 401
+    return jsonify({"ok": True, "csrf_token": session_row["csrf_token"]})
+
+
+@app.get("/api/admin/apps")
+def api_admin_apps():
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        return err_response, status
+    return jsonify({"ok": True, "items": list_apps()})
+
+
+@app.route("/api/admin/users/<user_id>/entitlements", methods=["GET", "POST"])
+def api_admin_user_entitlements(user_id):
+    admin_user, err_response, status = require_admin_auth()
+    if err_response is not None:
+        return err_response, status
+    try:
+        if not user_id.isascii() or not user_id.isdecimal() or len(user_id) > 19:
+            raise ValueError("invalid user id")
+        user_id = int(user_id)
+        validate_user_id(user_id)
+        if request.method == "POST":
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict) or set(payload) != {"app_key", "granted"}:
+                raise ValueError("expected app_key and granted")
+            if type(payload["granted"]) is not bool:
+                raise ValueError("granted must be boolean")
+            operation = grant_user_entitlement if payload["granted"] else revoke_user_entitlement
+            operation(user_id, payload["app_key"])
+        entitlements = list_user_entitlements(user_id)
+    except ValueError as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+    except LookupError as error:
+        return jsonify({"ok": False, "error": str(error)}), 404
+    return jsonify({"ok": True, "user_id": user_id, "entitlements": entitlements})
 
 
 @app.get("/api/admin/users")
@@ -842,7 +918,7 @@ def login_page():
   </div>
 
   <script>
-    const returnTo = {return_to!r};
+    const returnTo = {htmlsafe_json_dumps(return_to)};
 
     async function goIfAlreadyLoggedIn(){{
       try{{
@@ -1018,7 +1094,7 @@ def register_page():
   </div>
 
   <script>
-    const returnTo = {return_to!r};
+    const returnTo = {htmlsafe_json_dumps(return_to)};
     const status = document.getElementById("status");
 
     document.getElementById("registerForm").addEventListener("submit", async (ev) => {{
@@ -1081,10 +1157,10 @@ def account_page():
         )
 
     return_to_js = quote(return_to, safe=":/?&=%-_~.#")
-    username = user["username"]
-    email = user["email"] or ""
-    role = user["role"]
-    last_login_at = user["last_login_at"] or "ukendt"
+    username = escape(user["username"])
+    email = escape(user["email"] or "")
+    role = escape(user["role"])
+    last_login_at = escape(user["last_login_at"] or "ukendt")
     must_change_password = bool(user["must_change_password"])
     admin_link = '<a id="adminLink" href="/admin/users" style="width:auto;min-width:160px;text-align:center">Admin-panel</a>' if role == "admin" else ""
     password_warning = '<div class="meta" style="border-color:#6b5522"><div class="line"><strong>Vigtigt:</strong> Dit password er midlertidigt nulstillet. Du skal vælge et nyt password nu.</div></div>' if must_change_password else ""
@@ -1244,7 +1320,7 @@ button{{
   </div>
 
   <script>
-    const returnTo = {return_to!r};
+    const returnTo = {htmlsafe_json_dumps(return_to)};
 
     const profileStatusEl = document.getElementById("profileStatus");
     const passwordStatusEl = document.getElementById("passwordStatus");
@@ -1634,7 +1710,9 @@ def admin_users_page():
                 <button type="button" data-action="role" data-role="${esc(nextRole)}">${esc(roleBtnLabel)}</button>
                 <button type="button" data-action="status" data-active="${esc(nextStatus)}">${esc(statusBtnLabel)}</button>
                 <button type="button" data-action="reset-password">Nulstil password</button>
+                <button type="button" data-action="entitlements">Vis appadgang</button>
               </div>
+              <div class="entitlements" aria-live="polite"></div>
             </td>
           </tr>
         `;
@@ -1689,7 +1767,60 @@ def admin_users_page():
       }
     }
 
+    async function adminHeaders(){
+      const res = await fetch("/api/admin/csrf", {credentials: "include", cache: "no-store"});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      return {"Content-Type": "application/json", "X-CSRF-Token": data.csrf_token};
+    }
+
+    async function showEntitlements(row){
+      const userId = row.getAttribute("data-user-id");
+      const container = row.querySelector(".entitlements");
+      container.textContent = "Indlæser appadgang…";
+      try{
+        const [catalogResponse, grantsResponse] = await Promise.all([
+          fetch("/api/admin/apps", {credentials: "include", cache: "no-store"}),
+          fetch(`/api/admin/users/${userId}/entitlements`, {credentials: "include", cache: "no-store"})
+        ]);
+        if (!catalogResponse.ok || !grantsResponse.ok) throw new Error("Kunne ikke hente appadgang");
+        const catalog = await catalogResponse.json();
+        const grants = await grantsResponse.json();
+        container.replaceChildren();
+        for (const app of catalog.items){
+          const granted = grants.entitlements.includes(app.key);
+          const line = document.createElement("p");
+          const button = document.createElement("button");
+          button.type = "button";
+          line.textContent = `${app.name} (${app.key}): ${granted ? "adgang" : "ingen adgang"} `;
+          button.textContent = granted ? "Tilbagekald" : "Tildel";
+          button.addEventListener("click", async () => {
+            button.disabled = true;
+            try{
+              const res = await fetch(`/api/admin/users/${userId}/entitlements`, {
+                method: "POST", credentials: "include", headers: await adminHeaders(),
+                body: JSON.stringify({app_key: app.key, granted: !granted})
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+              await showEntitlements(row);
+            }catch(err){
+              container.textContent = "Fejl: " + err.message + ". Hent appadgang igen for at kontrollere status.";
+            }
+          });
+          line.append(button);
+          container.append(line);
+        }
+        if (!catalog.items.length) container.textContent = "Ingen registrerede apps.";
+      }catch(err){
+        container.textContent = "Fejl: " + err.message;
+      }
+    }
+
     function bindRowActions(){
+      usersBody.querySelectorAll("button[data-action='entitlements']").forEach(btn => {
+        btn.addEventListener("click", () => showEntitlements(btn.closest("tr")));
+      });
       usersBody.querySelectorAll("button[data-action='role']").forEach(btn => {
         btn.addEventListener("click", async () => {
           const row = btn.closest("tr");
@@ -1703,7 +1834,7 @@ def admin_users_page():
             const res = await fetch(`/api/admin/users/${userId}/role`, {
               method: "POST",
               credentials: "include",
-              headers: {"Content-Type": "application/json"},
+              headers: await adminHeaders(),
               body: JSON.stringify({ role })
             });
 
@@ -1733,7 +1864,7 @@ def admin_users_page():
             const res = await fetch(`/api/admin/users/${userId}/status`, {
               method: "POST",
               credentials: "include",
-              headers: {"Content-Type": "application/json"},
+              headers: await adminHeaders(),
               body: JSON.stringify({ is_active })
             });
 
@@ -1762,7 +1893,7 @@ def admin_users_page():
             const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
               method: "POST",
               credentials: "include",
-              headers: {"Content-Type": "application/json"},
+              headers: await adminHeaders(),
               body: JSON.stringify({})
             });
 
