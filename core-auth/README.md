@@ -9,7 +9,8 @@ must be established by the operator. Do not infer them from the local defaults.
 
 ## Local runtime and tests
 
-Run these commands from the repository root:
+Run these commands from the repository root. Node.js must also be installed for
+the localization JavaScript syntax and handler regression checks:
 
 ```sh
 python3 -m venv core-auth/.venv
@@ -273,3 +274,27 @@ since the backup, which is why writers stay stopped. Restart the previous Core
 Auth code and verify login/session behavior. If Writer already requires
 entitlements, roll that deployment back as well or keep it unavailable; never
 introduce an authentication-only access fallback.
+
+## UI languages
+
+The root, login, registration, account and admin pages support Danish (`da`,
+default) and English (`en`). Select a language with one exact `lang=da` or
+`lang=en` query parameter. If `lang` is absent, a single valid `lang` in the
+query of an exact-origin-validated `return_to` is inherited (for example from
+`https://apps.innosocia.dk/?lang=en`). Unknown, empty, repeated, uppercase,
+whitespace-padded or malformed selections fall back to Danish. An explicit
+invalid selection does not inherit another language.
+
+Language is carried in auth navigation links, including login/register,
+account/admin, forced password change and logout. It is not stored in a cookie,
+session or database, and `Accept-Language` is not used. The app destination,
+including its own query and fragment, is preserved without injecting a language
+into it. Unauthenticated account/admin links return through the canonical
+`https://auth.innosocia.dk` origin, never a caller-supplied Host header. The root
+page's navigation carries the language only, as in the production UI.
+
+Only UI labels and status text are localized. API keys, errors, roles, app keys,
+catalog names and entitlement data retain their existing contracts. Query values
+are URL-encoded, HTML values are escaped, and JavaScript values use HTML-safe
+JSON. See [localization reconciliation](localization-review.md) for the production
+comparison and deliberate compatibility corrections.

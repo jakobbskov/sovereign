@@ -2,9 +2,9 @@ import os
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
-from flask import Flask, jsonify, request, make_response
+from flask import Flask, jsonify, request, make_response, render_template_string
 from jinja2.utils import htmlsafe_json_dumps
 from markupsafe import escape
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -160,7 +160,11 @@ def get_current_auth():
 
 
 def get_safe_return_to(default="https://strength.innosocia.dk"):
-    raw = str(request.args.get("return_to", "")).strip()
+    return safe_return_to(request.args.get("return_to", ""), default)
+
+
+def safe_return_to(value, default="https://strength.innosocia.dk"):
+    raw = str(value).strip()
     if not raw:
         return default
 
@@ -174,6 +178,109 @@ def get_safe_return_to(default="https://strength.innosocia.dk"):
     if f"{parsed.scheme}://{parsed.netloc}" in ALLOWED_ORIGINS:
         return raw
     return default
+
+
+def get_request_lang():
+    """Only absent lang inherits from a trusted destination; invalid values use Danish."""
+    values = request.args.getlist("lang")
+    if not values:
+        values = parse_qs(urlsplit(get_safe_return_to()).query, keep_blank_values=True).get("lang", [])
+    return values[0] if len(values) == 1 and values[0] in ("da", "en") else "da"
+
+
+def build_auth_query(return_to: str, lang: str) -> str:
+    return urlencode({"return_to": safe_return_to(return_to),
+                      "lang": lang if lang in ("da", "en") else "da"})
+
+
+def tr_auth(lang: str, key: str) -> str:
+    """Human UI strings only; the catalog is local, with no mutable global state."""
+    translations = {
+        'app_title': ('Sovereign Account', 'Sovereign Account'),
+        'login_title': ('Log ind', 'Log in'),
+        'login_intro': ('Brug din konto til at få adgang til Sovereign-apps.', 'Use your account to access Sovereign apps.'),
+        'username': ('Brugernavn', 'Username'),
+        'password': ('Password', 'Password'),
+        'login_button': ('Log ind', 'Log in'),
+        'register_link': ('Har du ikke en konto? Opret bruger', "Don't have an account? Create one"),
+        'checking_login': ('Tjekker loginstatus…', 'Checking login status…'),
+        'status_logging_in': ('Logger ind…', 'Logging in…'),
+        'status_login_ok': ('Logget ind. Sender videre…', 'Logged in. Redirecting…'),
+        'not_logged_in_yet': ('Ikke logget ind endnu.', 'Not logged in yet.'),
+        'register_intro': ('Opret din centrale konto til Sovereign-apps.', 'Create your central account for Sovereign apps.'),
+        'email': ('E-mail', 'Email'),
+        'confirm_password': ('Gentag password', 'Confirm password'),
+        'register_button': ('Opret bruger', 'Create account'),
+        'login_link': ('Har du allerede en konto? Log ind', 'Already have an account? Log in'),
+        'status_registering': ('Opretter bruger…', 'Creating account…'),
+        'status_register_ok': ('Bruger oprettet. Sender videre…', 'Account created. Redirecting…'),
+        'account_intro': ('Din centrale konto til Sovereign-suiten.', 'Your central account for the Sovereign suite.'),
+        'not_specified': ('ikke angivet', 'not specified'),
+        'unknown_value': ('ukendt', 'unknown'),
+        'role_label': ('Rolle', 'Role'),
+        'last_login_label': ('Seneste login', 'Last login'),
+        'important_label': ('Vigtigt', 'Important'),
+        'temporary_password_warning': ('Dit password er midlertidigt nulstillet. Du skal vælge et nyt password nu.', 'Your password was temporarily reset. You must choose a new password now.'),
+        'account_details_title': ('Konto-oplysninger', 'Account details'),
+        'save_account_button': ('Gem konto-oplysninger', 'Save account details'),
+        'ready_status': ('Klar.', 'Ready.'),
+        'current_password': ('Nuværende password', 'Current password'),
+        'new_password': ('Nyt password', 'New password'),
+        'confirm_new_password': ('Gentag nyt password', 'Confirm new password'),
+        'change_password_button': ('Skift password', 'Change password'),
+        'back_to_app': ('Tilbage til app', 'Back to app'),
+        'logout_button': ('Log ud', 'Log out'),
+        'admin_panel': ('Admin-panel', 'Admin panel'),
+        'saving_account_status': ('Gemmer konto-oplysninger…', 'Saving account details…'),
+        'account_updated_status': ('Konto-oplysninger opdateret.', 'Account details updated.'),
+        'updating_password_status': ('Opdaterer password…', 'Updating password…'),
+        'password_updated_status': ('Password opdateret.', 'Password updated.'),
+        'root_title': ('Sovereign Core Auth', 'Sovereign Core Auth'),
+        'root_status': ('Auth-service kører.', 'Auth service is running.'),
+        'go_to_login': ('Gå til login', 'Go to login'),
+        'go_to_account': ('Gå til konto', 'Go to account'),
+        'go_to_admin': ('Gå til admin', 'Go to admin'),
+        'create_user': ('Opret bruger', 'Create account'),
+        'admin_title': ('Sovereign Admin', 'Sovereign Admin'),
+        'admin_intro': ('Brugeradministration for Sovereign Core Auth.', 'User administration for Sovereign Core Auth.'),
+        'access_denied': ('Adgang nægtet.', 'Access denied.'),
+        'resetting_password': ('Nulstiller password…', 'Resetting password…'),
+        'temporary_password_for': ('Midlertidigt password for', 'Temporary password for'),
+        'registration_disabled': ('Brugeroprettelse er deaktiveret.', 'Registration is disabled.'),
+        'back_to_account': ('Tilbage til konto', 'Back to account'),
+        'search_users': ('Søg på brugernavn eller e-mail', 'Search by username or email'),
+        'all_roles': ('Alle roller', 'All roles'),
+        'admins_only': ('Kun admins', 'Admins only'),
+        'users_only': ('Kun users', 'Users only'),
+        'all_statuses': ('Alle statuser', 'All statuses'),
+        'active_only': ('Kun aktive', 'Active only'),
+        'inactive_only': ('Kun inaktive', 'Inactive only'),
+        'loading_users': ('Indlæser brugere…', 'Loading users…'),
+        'status': ('Status', 'Status'),
+        'created': ('Oprettet', 'Created'),
+        'actions': ('Handlinger', 'Actions'),
+        'make_user': ('Gør user', 'Make user'),
+        'make_admin': ('Gør admin', 'Make admin'),
+        'deactivate': ('Deaktivér', 'Deactivate'),
+        'activate': ('Aktivér', 'Activate'),
+        'active': ('aktiv', 'active'),
+        'inactive': ('inaktiv', 'inactive'),
+        'reset_password': ('Nulstil password', 'Reset password'),
+        'users_shown': ('bruger(e) vist.', 'user(s) shown.'),
+        'updating_role': ('Opdaterer rolle…', 'Updating role…'),
+        'updating_status': ('Opdaterer status…', 'Updating status…'),
+        'show_entitlements': ('Vis appadgang', 'Show app access'),
+        'loading_entitlements': ('Indlæser appadgang…', 'Loading app access…'),
+        'entitlements_failed': ('Kunne ikke hente appadgang', 'Could not load app access'),
+        'access': ('adgang', 'access'),
+        'no_access': ('ingen adgang', 'no access'),
+        'revoke': ('Tilbagekald', 'Revoke'),
+        'grant': ('Tildel', 'Grant'),
+        'recheck_entitlements': ('. Hent appadgang igen for at kontrollere status.', '. Reload app access to check the status.'),
+        'no_apps': ('Ingen registrerede apps.', 'No registered apps.'),
+        'error_label': ('Fejl: ', 'Error: '),
+    }
+    return translations[key][1 if lang == "en" else 0]
 
 
 def require_admin_auth():
@@ -804,37 +911,42 @@ def auth_update_profile():
 
 @app.get("/")
 def root():
+    lang = get_request_lang()
+    t = lambda key: escape(tr_auth(lang, key))
     return (
-        '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+        f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<title>Sovereign Core Auth</title></head>'
+        f'<title>{t("root_title")}</title></head>'
         '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-        '<h1>Sovereign Core Auth</h1>'
-        '<p>Auth-service kører.</p>'
-        '<p><a href="/login" style="color:#9fd3a8">Gå til login</a></p>'
-        '<p><a href="/account" style="color:#9fd3a8">Gå til konto</a></p>'
-        '<p><a href="/admin/users" style="color:#9fd3a8">Gå til admin</a></p>'
-        '<p><a href="/register" style="color:#9fd3a8">Opret bruger</a></p>'
+        f'<h1>{t("root_title")}</h1>'
+        f'<p>{t("root_status")}</p>'
+        f'<p><a href="/login?lang={lang}" style="color:#9fd3a8">{t("go_to_login")}</a></p>'
+        f'<p><a href="/account?lang={lang}" style="color:#9fd3a8">{t("go_to_account")}</a></p>'
+        f'<p><a href="/admin/users?lang={lang}" style="color:#9fd3a8">{t("go_to_admin")}</a></p>'
+        f'<p><a href="/register?lang={lang}" style="color:#9fd3a8">{t("create_user")}</a></p>'
         '</body></html>'
     )
 
 
 @app.get("/login")
 def login_page():
+    lang = get_request_lang()
+    t = lambda key: escape(tr_auth(lang, key))
+    j = lambda key: htmlsafe_json_dumps(tr_auth(lang, key))
     return_to = get_safe_return_to()
-    return_to_js = quote(return_to, safe=":/?&=%-_~.#")
+    auth_query = escape(build_auth_query(return_to, lang))
     register_link = (
-        f'<a class="linkbtn" id="registerLink" href="/register?return_to={return_to_js}">Har du ikke en konto? Opret bruger</a>'
+        f'<a class="linkbtn" id="registerLink" href="/register?{auth_query}">{t("register_link")}</a>'
         if ALLOW_REGISTRATION else ""
     )
 
     return f"""
 <!doctype html>
-<html lang="da">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sovereign Login</title>
+  <title>{t("login_title")}</title>
   <style>
     body{{
       margin:0;
@@ -893,28 +1005,28 @@ def login_page():
 </head>
 <body>
   <div class="card">
-    <h1>Sovereign Login</h1>
-    <p>Log ind for at fortsætte til din Sovereign-app.</p>
+    <h1>{t("login_title")}</h1>
+    <p>{t("login_intro")}</p>
 
     <form id="loginForm">
       <label>
-        Brugernavn
+        {t("username")}
         <input id="username" name="username" autocomplete="username" required>
       </label>
 
       <label>
-        Password
+        {t("password")}
         <input id="password" name="password" type="password" autocomplete="current-password" required>
       </label>
 
-      <button type="submit">Log ind</button>
+      <button type="submit">{t("login_button")}</button>
     </form>
 
     {register_link}
 
-    <a class="linkbtn" id="accountLink" href="/account?return_to={return_to_js}">Gå til konto</a>
+    <a class="linkbtn" id="accountLink" href="/account?{auth_query}">{t("go_to_account")}</a>
 
-    <div id="status" class="small">Tjekker loginstatus…</div>
+    <div id="status" class="small">{t("checking_login")}</div>
   </div>
 
   <script>
@@ -939,12 +1051,12 @@ def login_page():
       const status = document.getElementById("status");
       const already = await goIfAlreadyLoggedIn();
       if (!already){{
-        status.textContent = "Ikke logget ind endnu.";
+        status.textContent = {j("not_logged_in_yet")};
       }}
 
       document.getElementById("loginForm").addEventListener("submit", async (ev) => {{
         ev.preventDefault();
-        status.textContent = "Logger ind…";
+        status.textContent = {j("status_logging_in")};
         status.classList.remove("err");
 
         const username = document.getElementById("username").value.trim();
@@ -963,14 +1075,14 @@ def login_page():
             throw new Error(data?.error || `HTTP ${{res.status}}`);
           }}
 
-          status.textContent = "Login OK. Sender videre…";
+          status.textContent = {j("status_login_ok")};
         if (data?.user?.must_change_password){{
-          location.href = "/account?return_to=" + encodeURIComponent(returnTo);
+          location.href = "/account?" + {htmlsafe_json_dumps(build_auth_query(return_to, lang))};
           return;
         }}
         location.href = returnTo;
         }}catch(err){{
-          status.textContent = "Fejl: " + (err?.message || String(err));
+          status.textContent = {j("error_label")} + (err?.message || String(err));
           status.classList.add("err");
         }}
       }});
@@ -985,28 +1097,31 @@ def login_page():
 
 @app.get("/register")
 def register_page():
+    lang = get_request_lang()
+    t = lambda key: escape(tr_auth(lang, key))
+    j = lambda key: htmlsafe_json_dumps(tr_auth(lang, key))
     return_to = get_safe_return_to()
-    return_to_js = quote(return_to, safe=":/?&=%-_~.#")
+    auth_query = escape(build_auth_query(return_to, lang))
 
     if not ALLOW_REGISTRATION:
         return (
-            '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+            f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<title>Sovereign Register</title></head>'
             '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
             '<h1>Sovereign Register</h1>'
-            '<p>Brugeroprettelse er deaktiveret.</p>'
-            '<p><a href="/login" style="color:#9fd3a8">Gå til login</a></p>'
+            f'<p>{t("registration_disabled")}</p>'
+            f'<p><a href="/login?{auth_query}" style="color:#9fd3a8">{t("go_to_login")}</a></p>'
             '</body></html>'
         )
 
     return f"""
 <!doctype html>
-<html lang="da">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Opret bruger</title>
+  <title>{t("create_user")}</title>
   <style>
     body{{
       margin:0;
@@ -1061,34 +1176,34 @@ def register_page():
 </head>
 <body>
   <div class="card">
-    <h1>Opret bruger</h1>
-    <p>Opret en konto og fortsæt direkte til din Sovereign-app.</p>
+    <h1>{t("create_user")}</h1>
+    <p>{t("register_intro")}</p>
 
     <form id="registerForm">
       <label>
-        Brugernavn
+        {t("username")}
         <input id="username" name="username" autocomplete="username" required>
       </label>
 
       <label>
-        E-mail
+        {t("email")}
         <input id="email" name="email" type="email" autocomplete="email">
       </label>
 
       <label>
-        Password
+        {t("password")}
         <input id="password" name="password" type="password" autocomplete="new-password" required>
       </label>
 
       <label>
-        Gentag password
+        {t("confirm_password")}
         <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
       </label>
 
-      <button type="submit">Opret konto</button>
+      <button type="submit">{t("register_button")}</button>
     </form>
 
-    <a class="linkbtn" href="/login?return_to={return_to_js}">Har du allerede en konto? Log ind</a>
+    <a class="linkbtn" href="/login?{auth_query}">{t("login_link")}</a>
 
     <div id="status" class="small" aria-live="polite"></div>
   </div>
@@ -1099,7 +1214,7 @@ def register_page():
 
     document.getElementById("registerForm").addEventListener("submit", async (ev) => {{
       ev.preventDefault();
-      status.textContent = "Opretter bruger…";
+      status.textContent = {j("status_registering")};
       status.classList.remove("err");
 
       const username = document.getElementById("username").value.trim();
@@ -1125,10 +1240,10 @@ def register_page():
           throw new Error(data?.error || `HTTP ${{res.status}}`);
         }}
 
-        status.textContent = "Bruger oprettet. Sender videre…";
+        status.textContent = {j("status_register_ok")};
         location.href = returnTo;
       }}catch(err){{
-        status.textContent = "Fejl: " + (err?.message || String(err));
+        status.textContent = {j("error_label")} + (err?.message || String(err));
         status.classList.add("err");
       }}
     }});
@@ -1140,38 +1255,42 @@ def register_page():
 
 @app.get("/account")
 def account_page():
+    lang = get_request_lang()
+    t = lambda key: escape(tr_auth(lang, key))
+    j = lambda key: htmlsafe_json_dumps(tr_auth(lang, key))
     user, session_row = get_current_auth()
     return_to = get_safe_return_to()
 
     if user is None:
-        login_target = f"/login?return_to={quote(request.url, safe=':/?&=%-_~.#')}"
+        login_target = "/login?" + build_auth_query(
+            "https://auth.innosocia.dk" + request.path + "?" + build_auth_query(return_to, lang), lang
+        )
         return (
-            '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+            f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            '<title>Sovereign Account</title></head>'
+            f'<title>{t("app_title")}</title></head>'
             '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-            '<h1>Sovereign Account</h1>'
-            '<p>Du er ikke logget ind.</p>'
-            f'<p><a href="{login_target}" style="color:#9fd3a8">Gå til login</a></p>'
+            f'<h1>{t("app_title")}</h1>'
+            f'<p>{t("not_logged_in_yet")}</p>'
+            f'<p><a href="{escape(login_target)}" style="color:#9fd3a8">{t("go_to_login")}</a></p>'
             '</body></html>'
         )
 
-    return_to_js = quote(return_to, safe=":/?&=%-_~.#")
     username = escape(user["username"])
     email = escape(user["email"] or "")
     role = escape(user["role"])
-    last_login_at = escape(user["last_login_at"] or "ukendt")
+    last_login_at = escape(user["last_login_at"] or tr_auth(lang, "unknown_value"))
     must_change_password = bool(user["must_change_password"])
-    admin_link = '<a id="adminLink" href="/admin/users" style="width:auto;min-width:160px;text-align:center">Admin-panel</a>' if role == "admin" else ""
-    password_warning = '<div class="meta" style="border-color:#6b5522"><div class="line"><strong>Vigtigt:</strong> Dit password er midlertidigt nulstillet. Du skal vælge et nyt password nu.</div></div>' if must_change_password else ""
+    admin_link = f'<a id="adminLink" href="/admin/users?lang={lang}" style="width:auto;min-width:160px;text-align:center">{t("admin_panel")}</a>' if role == "admin" else ""
+    password_warning = f'<div class="meta" style="border-color:#6b5522"><div class="line"><strong>{t("important_label")}:</strong> {t("temporary_password_warning")}</div></div>' if must_change_password else ""
 
     return f"""
 <!doctype html>
-<html lang="da">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sovereign Account</title>
+  <title>{t("app_title")}</title>
   <style>
 body{{
   margin:0;
@@ -1257,65 +1376,65 @@ button{{
 </head>
 <body>
   <div class="card">
-    <h1>Sovereign Account</h1>
-    <p>Din centrale konto til Sovereign-suiten.</p>
+    <h1>{t("app_title")}</h1>
+    <p>{t("account_intro")}</p>
 
     <div class="meta">
-      <div class="line"><strong>Brugernavn:</strong> {username}</div>
-      <div class="line"><strong>E-mail:</strong> {email or "ikke angivet"}</div>
-      <div class="line"><strong>Rolle:</strong> {role}</div>
-      <div class="line"><strong>Seneste login:</strong> {last_login_at}</div>
+      <div class="line"><strong>{t("username")}:</strong> {username}</div>
+      <div class="line"><strong>{t("email")}:</strong> {email or t("not_specified")}</div>
+      <div class="line"><strong>{t("role_label")}:</strong> {role}</div>
+      <div class="line"><strong>{t("last_login_label")}:</strong> {last_login_at}</div>
     </div>
 
     {password_warning}
 
     <div class="section">
-      <h2>Konto-oplysninger</h2>
+      <h2>{t("account_details_title")}</h2>
       <form id="profileForm">
         <label>
-          Brugernavn
+          {t("username")}
           <input id="profile_username" name="profile_username" value="{username}" autocomplete="username" required>
         </label>
 
         <label>
-          E-mail
+          {t("email")}
           <input id="profile_email" name="profile_email" type="email" value="{email}" autocomplete="email">
         </label>
 
-        <button type="submit">Gem konto-oplysninger</button>
+        <button type="submit">{t("save_account_button")}</button>
       </form>
 
-      <div id="profileStatus" class="small">Klar.</div>
+      <div id="profileStatus" class="small">{t("ready_status")}</div>
     </div>
 
     <div class="section">
-      <h2>Skift password</h2>
+      <h2>{t("change_password_button")}</h2>
       <form id="passwordForm">
         <label id="currentPasswordField">
-          Nuværende password
+          {t("current_password")}
           <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
         </label>
 
         <label>
-          Nyt password
+          {t("new_password")}
           <input id="new_password" name="new_password" type="password" autocomplete="new-password" required>
         </label>
 
         <label>
-          Gentag nyt password
+          {t("confirm_new_password")}
           <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
         </label>
 
-        <button type="submit">Skift password</button>
+        <button type="submit">{t("change_password_button")}</button>
       </form>
 
-      <div id="passwordStatus" class="small">Klar.</div>
+      <div id="passwordStatus" class="small">{t("ready_status")}</div>
     </div>
 
     <div class="row">
-      <a id="backLink" href="{return_to_js}">Tilbage til app</a>
+      <a id="backLink" href="{escape(return_to)}">{t("back_to_app")}</a>
       {admin_link}
-      <button id="logoutBtn" type="button">Log ud</button>
+      <button id="logoutBtn" type="button">{t("logout_button")}</button>
     </div>
   </div>
 
@@ -1338,7 +1457,7 @@ button{{
 
     document.getElementById("profileForm").addEventListener("submit", async (ev) => {{
       ev.preventDefault();
-      profileStatusEl.textContent = "Gemmer konto-oplysninger…";
+      profileStatusEl.textContent = {j("saving_account_status")};
       profileStatusEl.className = "small";
 
       const username = document.getElementById("profile_username").value.trim();
@@ -1357,18 +1476,18 @@ button{{
           throw new Error(data?.error || `HTTP ${{res.status}}`);
         }}
 
-        profileStatusEl.textContent = data?.message || "Konto-oplysninger opdateret.";
+        profileStatusEl.textContent = {j("account_updated_status")};
         profileStatusEl.className = "small ok";
         location.reload();
       }}catch(err){{
-        profileStatusEl.textContent = "Fejl: " + (err?.message || String(err));
+        profileStatusEl.textContent = {j("error_label")} + (err?.message || String(err));
         profileStatusEl.className = "small err";
       }}
     }});
 
     document.getElementById("passwordForm").addEventListener("submit", async (ev) => {{
       ev.preventDefault();
-      passwordStatusEl.textContent = "Opdaterer password…";
+      passwordStatusEl.textContent = {j("updating_password_status")};
       passwordStatusEl.className = "small";
 
       const current_password = document.getElementById("current_password").value;
@@ -1403,11 +1522,11 @@ button{{
           throw new Error(data?.error || `HTTP ${{res.status}}`);
         }}
 
-        passwordStatusEl.textContent = data?.message || "Password opdateret.";
+        passwordStatusEl.textContent = {j("password_updated_status")};
         passwordStatusEl.className = "small ok";
         document.getElementById("passwordForm").reset();
       }}catch(err){{
-        passwordStatusEl.textContent = "Fejl: " + (err?.message || String(err));
+        passwordStatusEl.textContent = {j("error_label")} + (err?.message || String(err));
         passwordStatusEl.className = "small err";
       }}
     }});
@@ -1419,7 +1538,7 @@ button{{
           credentials: "include"
         }});
       }}catch(err){{}}
-      location.href = `/login?return_to=${{encodeURIComponent(returnTo)}}`;
+      location.href = "/login?" + {htmlsafe_json_dumps(build_auth_query(return_to, lang))};
     }});
   </script>
 </body>
@@ -1429,38 +1548,43 @@ button{{
 
 @app.get("/admin/users")
 def admin_users_page():
+    lang = get_request_lang()
+    t = lambda key: escape(tr_auth(lang, key))
+    j = lambda key: htmlsafe_json_dumps(tr_auth(lang, key))
     admin_user, err_response, status = require_admin_auth()
     if err_response is not None:
         if status == 401:
-            login_target = f"/login?return_to={quote(request.url, safe=':/?&=%-_~.#')}"
+            login_target = "/login?" + build_auth_query(
+                "https://auth.innosocia.dk/admin/users?" + urlencode({"lang": lang}), lang
+            )
             return (
-                '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+                f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width,initial-scale=1">'
-                '<title>Sovereign Admin</title></head>'
+                f'<title>{t("admin_title")}</title></head>'
                 '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-                '<h1>Sovereign Admin</h1>'
-                '<p>Du er ikke logget ind.</p>'
-                f'<p><a href="{login_target}" style="color:#9fd3a8">Gå til login</a></p>'
+                f'<h1>{t("admin_title")}</h1>'
+                f'<p>{t("not_logged_in_yet")}</p>'
+                f'<p><a href="{escape(login_target)}" style="color:#9fd3a8">{t("go_to_login")}</a></p>'
                 '</body></html>'
             )
         return (
-            '<!doctype html><html lang="da"><head><meta charset="utf-8">'
+            f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            '<title>Sovereign Admin</title></head>'
+            f'<title>{t("admin_title")}</title></head>'
             '<body style="font-family:system-ui,sans-serif;background:#111;color:#eee;padding:32px">'
-            '<h1>Sovereign Admin</h1>'
-            '<p>Adgang nægtet.</p>'
-            '<p><a href="/account" style="color:#9fd3a8">Gå til konto</a></p>'
+            f'<h1>{t("admin_title")}</h1>'
+            f'<p>{t("access_denied")}</p>'
+            f'<p><a href="/account?lang={lang}" style="color:#9fd3a8">{t("go_to_account")}</a></p>'
             '</body></html>'
         )
 
-    return """
+    return render_template_string("""
 <!doctype html>
-<html lang="da">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sovereign Admin</title>
+  <title>{{ t("admin_title") }}</title>
   <style>
     body{
       margin:0;
@@ -1590,27 +1714,27 @@ def admin_users_page():
         display:none;
       }
       td:nth-child(2)::before{
-        content:"Brugernavn: ";
+        content:attr(data-label);
         color:#b9b9b9;
         font-weight:600;
       }
       td:nth-child(3)::before{
-        content:"E-mail: ";
+        content:attr(data-label);
         color:#b9b9b9;
         font-weight:600;
       }
       td:nth-child(4)::before{
-        content:"Rolle: ";
+        content:attr(data-label);
         color:#b9b9b9;
         font-weight:600;
       }
       td:nth-child(5)::before{
-        content:"Status: ";
+        content:attr(data-label);
         color:#b9b9b9;
         font-weight:600;
       }
       td:nth-child(8)::before{
-        content:"Handlinger:";
+        content:attr(data-label);
         display:block;
         color:#b9b9b9;
         font-weight:600;
@@ -1629,41 +1753,41 @@ def admin_users_page():
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Sovereign Admin</h1>
-      <p>Brugeradministration for Sovereign Core Auth.</p>
+      <h1>{{ t("admin_title") }}</h1>
+      <p>{{ t("admin_intro") }}</p>
 
       <div class="row">
-        <a href="/account">Tilbage til konto</a>
+        <a href="/account?lang={{ lang }}">{{ t("back_to_account") }}</a>
       </div>
 
       <div class="toolbar">
-        <input id="userSearch" type="search" placeholder="Søg på brugernavn eller e-mail">
+        <input id="userSearch" type="search" placeholder='{{ t("search_users") }}'>
         <select id="roleFilter">
-          <option value="">Alle roller</option>
-          <option value="admin">Kun admins</option>
-          <option value="user">Kun users</option>
+          <option value="">{{ t("all_roles") }}</option>
+          <option value="admin">{{ t("admins_only") }}</option>
+          <option value="user">{{ t("users_only") }}</option>
         </select>
         <select id="statusFilter">
-          <option value="">Alle statuser</option>
-          <option value="active">Kun aktive</option>
-          <option value="inactive">Kun inaktive</option>
+          <option value="">{{ t("all_statuses") }}</option>
+          <option value="active">{{ t("active_only") }}</option>
+          <option value="inactive">{{ t("inactive_only") }}</option>
         </select>
       </div>
 
-      <div id="status" class="small">Indlæser brugere…</div>
+      <div id="status" class="small">{{ t("loading_users") }}</div>
 
       <div class="table-scroll">
         <table>
           <thead>
             <tr>
               <th>ID</th>
-              <th>Brugernavn</th>
-              <th>E-mail</th>
-              <th>Rolle</th>
-              <th>Status</th>
-              <th>Oprettet</th>
-              <th>Seneste login</th>
-              <th>Handlinger</th>
+              <th>{{ t("username") }}</th>
+              <th>{{ t("email") }}</th>
+              <th>{{ t("role_label") }}</th>
+              <th>{{ t("status") }}</th>
+              <th>{{ t("created") }}</th>
+              <th>{{ t("last_login_label") }}</th>
+              <th>{{ t("actions") }}</th>
             </tr>
           </thead>
           <tbody id="usersBody"></tbody>
@@ -1691,26 +1815,26 @@ def admin_users_page():
 
     function renderUsers(items){
       usersBody.innerHTML = items.map(user => {
-        const roleBtnLabel = user.role === "admin" ? "Gør user" : "Gør admin";
+        const roleBtnLabel = user.role === "admin" ? {{ j("make_user") }} : {{ j("make_admin") }};
         const nextRole = user.role === "admin" ? "user" : "admin";
-        const statusBtnLabel = user.is_active ? "Deaktivér" : "Aktivér";
+        const statusBtnLabel = user.is_active ? {{ j("deactivate") }} : {{ j("activate") }};
         const nextStatus = user.is_active ? "false" : "true";
 
         return `
           <tr data-user-id="${esc(user.id)}">
             <td>${esc(user.id)}</td>
-            <td>${esc(user.username)}</td>
-            <td>${esc(user.email || "")}</td>
-            <td>${esc(user.role)}</td>
-            <td>${user.is_active ? "aktiv" : "inaktiv"}</td>
+            <td data-label="${esc({{ j("username") }})}: ">${esc(user.username)}</td>
+            <td data-label="${esc({{ j("email") }})}: ">${esc(user.email || "")}</td>
+            <td data-label="${esc({{ j("role_label") }})}: ">${esc(user.role)}</td>
+            <td data-label="${esc({{ j("status") }})}: ">${esc(user.is_active ? {{ j("active") }} : {{ j("inactive") }})}</td>
             <td>${esc(user.created_at || "")}</td>
             <td>${esc(user.last_login_at || "")}</td>
-            <td>
+            <td data-label="${esc({{ j("actions") }})}:">
               <div class="actions">
                 <button type="button" data-action="role" data-role="${esc(nextRole)}">${esc(roleBtnLabel)}</button>
                 <button type="button" data-action="status" data-active="${esc(nextStatus)}">${esc(statusBtnLabel)}</button>
-                <button type="button" data-action="reset-password">Nulstil password</button>
-                <button type="button" data-action="entitlements">Vis appadgang</button>
+                <button type="button" data-action="reset-password">${esc({{ j("reset_password") }})}</button>
+                <button type="button" data-action="entitlements">${esc({{ j("show_entitlements") }})}</button>
               </div>
               <div class="entitlements" aria-live="polite"></div>
             </td>
@@ -1719,7 +1843,7 @@ def admin_users_page():
       }).join("");
 
       bindRowActions();
-      statusEl.textContent = `${items.length} bruger(e) vist.`;
+      statusEl.textContent = `${items.length} ` + {{ j("users_shown") }};
       statusEl.className = "small ok";
     }
 
@@ -1743,7 +1867,7 @@ def admin_users_page():
     }
 
     async function loadUsers(){
-      statusEl.textContent = "Indlæser brugere…";
+      statusEl.textContent = {{ j("loading_users") }};
       statusEl.className = "small";
 
       try{
@@ -1762,7 +1886,7 @@ def admin_users_page():
       }catch(err){
         ALL_USERS = [];
         usersBody.innerHTML = "";
-        statusEl.textContent = "Fejl: " + (err?.message || String(err));
+        statusEl.textContent = {{ j("error_label") }} + (err?.message || String(err));
         statusEl.className = "small err";
       }
     }
@@ -1777,13 +1901,13 @@ def admin_users_page():
     async function showEntitlements(row){
       const userId = row.getAttribute("data-user-id");
       const container = row.querySelector(".entitlements");
-      container.textContent = "Indlæser appadgang…";
+      container.textContent = {{ j("loading_entitlements") }};
       try{
         const [catalogResponse, grantsResponse] = await Promise.all([
           fetch("/api/admin/apps", {credentials: "include", cache: "no-store"}),
           fetch(`/api/admin/users/${userId}/entitlements`, {credentials: "include", cache: "no-store"})
         ]);
-        if (!catalogResponse.ok || !grantsResponse.ok) throw new Error("Kunne ikke hente appadgang");
+        if (!catalogResponse.ok || !grantsResponse.ok) throw new Error({{ j("entitlements_failed") }});
         const catalog = await catalogResponse.json();
         const grants = await grantsResponse.json();
         container.replaceChildren();
@@ -1792,8 +1916,8 @@ def admin_users_page():
           const line = document.createElement("p");
           const button = document.createElement("button");
           button.type = "button";
-          line.textContent = `${app.name} (${app.key}): ${granted ? "adgang" : "ingen adgang"} `;
-          button.textContent = granted ? "Tilbagekald" : "Tildel";
+          line.textContent = `${app.name} (${app.key}): ${granted ? {{ j("access") }} : {{ j("no_access") }}} `;
+          button.textContent = granted ? {{ j("revoke") }} : {{ j("grant") }};
           button.addEventListener("click", async () => {
             button.disabled = true;
             try{
@@ -1805,15 +1929,15 @@ def admin_users_page():
               if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
               await showEntitlements(row);
             }catch(err){
-              container.textContent = "Fejl: " + err.message + ". Hent appadgang igen for at kontrollere status.";
+              container.textContent = {{ j("error_label") }} + err.message + {{ j("recheck_entitlements") }};
             }
           });
           line.append(button);
           container.append(line);
         }
-        if (!catalog.items.length) container.textContent = "Ingen registrerede apps.";
+        if (!catalog.items.length) container.textContent = {{ j("no_apps") }};
       }catch(err){
-        container.textContent = "Fejl: " + err.message;
+        container.textContent = {{ j("error_label") }} + err.message;
       }
     }
 
@@ -1827,7 +1951,7 @@ def admin_users_page():
           const userId = row?.getAttribute("data-user-id");
           const role = btn.getAttribute("data-role");
 
-          statusEl.textContent = "Opdaterer rolle…";
+          statusEl.textContent = {{ j("updating_role") }};
           statusEl.className = "small";
 
           try{
@@ -1845,7 +1969,7 @@ def admin_users_page():
 
             await loadUsers();
           }catch(err){
-            statusEl.textContent = "Fejl: " + (err?.message || String(err));
+            statusEl.textContent = {{ j("error_label") }} + (err?.message || String(err));
             statusEl.className = "small err";
           }
         });
@@ -1857,7 +1981,7 @@ def admin_users_page():
           const userId = row?.getAttribute("data-user-id");
           const is_active = btn.getAttribute("data-active") === "true";
 
-          statusEl.textContent = "Opdaterer status…";
+          statusEl.textContent = {{ j("updating_status") }};
           statusEl.className = "small";
 
           try{
@@ -1875,7 +1999,7 @@ def admin_users_page():
 
             await loadUsers();
           }catch(err){
-            statusEl.textContent = "Fejl: " + (err?.message || String(err));
+            statusEl.textContent = {{ j("error_label") }} + (err?.message || String(err));
             statusEl.className = "small err";
           }
         });
@@ -1886,7 +2010,7 @@ def admin_users_page():
           const row = btn.closest("tr");
           const userId = row?.getAttribute("data-user-id");
 
-          statusEl.textContent = "Nulstiller password…";
+          statusEl.textContent = {{ j("resetting_password") }};
           statusEl.className = "small";
 
           try{
@@ -1904,10 +2028,10 @@ def admin_users_page():
 
             const username = data?.user?.username || `#${userId}`;
             const tempPassword = data?.temporary_password || "";
-            statusEl.textContent = `Midlertidigt password for ${username}: ${tempPassword}`;
+            statusEl.textContent = {{ j("temporary_password_for") }} + ` ${username}: ${tempPassword}`;
             statusEl.className = "small ok";
           }catch(err){
-            statusEl.textContent = "Fejl: " + (err?.message || String(err));
+            statusEl.textContent = {{ j("error_label") }} + (err?.message || String(err));
             statusEl.className = "small err";
           }
         });
@@ -1922,7 +2046,7 @@ def admin_users_page():
   </script>
 </body>
 </html>
-"""
+""", lang=lang, t=t, j=j)
 
 
 
