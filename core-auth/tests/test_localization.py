@@ -76,9 +76,10 @@ def test_localized_pages_render(client, login, monkeypatch, page, lang):
 
 
 @pytest.mark.parametrize('lang', ['da', 'en'])
-def test_login_register_links_round_trip(client, monkeypatch, lang):
+@pytest.mark.parametrize("origin", ["https://apps.innosocia.dk", "https://writer.innosocia.dk"])
+def test_login_register_links_round_trip(client, monkeypatch, lang, origin):
     monkeypatch.setattr(auth, 'ALLOW_REGISTRATION', True)
-    target = 'https://apps.innosocia.dk/path?one=a+b&lang=en&next=%2Ffoo#part&lang=fr'
+    target = origin + '/path?one=a+b&lang=en&next=%2Ffoo#part&lang=fr'
     response = client.get('/login', query_string={'return_to': target, 'lang': lang})
     for path in ('/register', '/account'):
         query = parse_qs(urlsplit(link_to(response.text, path)).query)
@@ -285,8 +286,9 @@ async function fetch(url, options={}){
 
 
 @pytest.mark.parametrize('lang', ['da', 'en'])
-def test_login_password_reset_and_logout_javascript_flow(client, login, users, lang):
-    target = 'https://apps.innosocia.dk/?lang=en&view=home#launch'
+@pytest.mark.parametrize("origin", ["https://apps.innosocia.dk", "https://writer.innosocia.dk"])
+def test_login_password_reset_and_logout_javascript_flow(client, login, users, lang, origin):
+    target = origin + '/?lang=en&view=home#launch'
     html = client.get('/login', query_string={'lang': lang, 'return_to': target}).text
     run_ui(html, '''
 await new Promise(resolve => setImmediate(resolve));
@@ -322,9 +324,10 @@ assert.equal(next.searchParams.get('return_to'), ''' + json.dumps(target) + ''')
 
 
 @pytest.mark.parametrize('lang', ['da', 'en'])
-def test_registration_javascript_returns_to_launcher(client, monkeypatch, lang):
+@pytest.mark.parametrize("origin", ["https://apps.innosocia.dk", "https://writer.innosocia.dk"])
+def test_registration_javascript_returns_to_launcher(client, monkeypatch, lang, origin):
     monkeypatch.setattr(auth, 'ALLOW_REGISTRATION', True)
-    target = 'https://apps.innosocia.dk/?lang=en&app=writer#start'
+    target = origin + '/?lang=en&app=writer#start'
     html = client.get('/register', query_string={'lang': lang, 'return_to': target}).text
     run_ui(html, '''
 await elements.get('registerForm').handlers.submit({preventDefault(){}});
