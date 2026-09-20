@@ -298,3 +298,33 @@ catalog names and entitlement data retain their existing contracts. Query values
 are URL-encoded, HTML values are escaped, and JavaScript values use HTML-safe
 JSON. See [localization reconciliation](localization-review.md) for the production
 comparison and deliberate compatibility corrections.
+
+## Safe app return destinations
+
+Core Auth accepts `https://writer.innosocia.dk` as an explicit `return_to` origin,
+including normal paths, queries and fragments. Login, registration, account,
+forced password changes and logout reuse the same `safe_return_to` validator and
+preserve the destination through Danish and English navigation.
+
+`ALLOWED_RETURN_ORIGINS` extends the existing approved HTTPS origins (Strength,
+Planta, Finance, Apps and Auth) with Writer. It is separate from the existing
+CORS permissions: redirect approval does not authorize cross-origin API reads.
+Validation compares the parsed scheme and complete authority exactly, not URL
+prefixes or hostname suffixes. Wildcard subdomains, userinfo, explicit ports,
+relative URLs, backslashes and raw control characters are rejected. Controls are
+checked before whitespace trimming. Invalid destinations retain the existing
+`https://strength.innosocia.dk` fallback. Encoded hostname/delimiter forms cannot
+match an approved authority; ordinary encoded path/query data remains supported.
+
+Redirect approval is not an entitlement. A signed-in user without `writer` can
+return to Writer, whose backend still enforces `writer` server-side and rejects
+protected operations with 403. Admin status does not grant implicit app access.
+New apps require both a reviewed redirect origin and a separately registered app
+entitlement; user grants remain explicit administrative actions.
+
+Deploy this as a reviewed Core Auth code release using the existing controlled
+release/rollback process. No database migration, cookie change or entitlement
+update is required for this change. Restart Core Auth only during an explicitly
+authorized deployment, then check localized return navigation with approved test
+accounts. Writer DNS/TLS/vhost/service deployment remains a separate prerequisite
+for a usable destination; allowing a URL does not deploy that application.

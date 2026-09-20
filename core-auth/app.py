@@ -50,6 +50,9 @@ ALLOWED_ORIGINS = {
     "https://auth.innosocia.dk",
 }
 
+# Redirect approval does not grant cross-origin API access or app entitlements.
+ALLOWED_RETURN_ORIGINS = ALLOWED_ORIGINS | {"https://writer.innosocia.dk"}
+
 
 @app.after_request
 def add_cors_headers(response):
@@ -164,18 +167,19 @@ def get_safe_return_to(default="https://strength.innosocia.dk"):
 
 
 def safe_return_to(value, default="https://strength.innosocia.dk"):
-    raw = str(value).strip()
-    if not raw:
-        return default
-
+    raw = str(value)
+    # Reject controls before trimming: strip() would otherwise hide edge CRLF.
     # Reject browser/parser ambiguities before checking the exact trusted origin.
     if "\\" in raw or any(ord(char) < 32 or ord(char) == 127 for char in raw):
+        return default
+    raw = raw.strip()
+    if not raw:
         return default
     try:
         parsed = urlsplit(raw)
     except ValueError:
         return default
-    if f"{parsed.scheme}://{parsed.netloc}" in ALLOWED_ORIGINS:
+    if f"{parsed.scheme}://{parsed.netloc}" in ALLOWED_RETURN_ORIGINS:
         return raw
     return default
 
