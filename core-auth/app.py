@@ -51,7 +51,10 @@ ALLOWED_ORIGINS = {
 }
 
 # Redirect approval does not grant cross-origin API access or app entitlements.
-ALLOWED_RETURN_ORIGINS = ALLOWED_ORIGINS | {\n    "https://writer.innosocia.dk",\n    "https://chat.innosocia.dk",\n}
+ALLOWED_RETURN_ORIGINS = ALLOWED_ORIGINS | {
+    "https://writer.innosocia.dk",
+    "https://chat.innosocia.dk",
+}
 
 
 @app.after_request
