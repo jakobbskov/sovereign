@@ -94,7 +94,7 @@ def test_writer_account_round_trip_does_not_grant_entitlement(client, login, lan
 
 def test_redirect_approval_does_not_expand_cors_or_admin_access(client):
     origin = "https://writer.innosocia.dk"
-    assert auth.ALLOWED_RETURN_ORIGINS - auth.ALLOWED_ORIGINS == {origin}
+    assert auth.ALLOWED_RETURN_ORIGINS - auth.ALLOWED_ORIGINS == {origin, "https://chat.innosocia.dk"}
     for path in ("/api/auth/validate", "/api/admin/csrf"):
         response = client.get(path, headers={"Origin": origin})
         assert response.status_code == 401

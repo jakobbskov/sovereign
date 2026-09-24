@@ -301,7 +301,7 @@ comparison and deliberate compatibility corrections.
 
 ## Safe app return destinations
 
-Core Auth accepts `https://writer.innosocia.dk` as an explicit `return_to` origin,
+Core Auth accepts `https://writer.innosocia.dk` and `https://chat.innosocia.dk` as explicit `return_to` origins,
 including normal paths, queries and fragments. Login, registration, account,
 forced password changes and logout reuse the same `safe_return_to` validator and
 preserve the destination through Danish and English navigation.
