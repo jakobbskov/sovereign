@@ -15,7 +15,10 @@ def test_new_database_and_catalog():
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"apps", "user_apps", "users", "sessions"} <= tables
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-    assert db.list_apps() == [{"key": "writer", "name": "Sovereign Writer"}]
+    assert db.list_apps() == [
+        {"key": "lingua", "name": "Lingua"},
+        {"key": "writer", "name": "Sovereign Writer"},
+    ]
 
 
 def test_existing_database_migration(tmp_path, monkeypatch, client):
@@ -39,7 +42,10 @@ def test_existing_database_migration(tmp_path, monkeypatch, client):
     with closing(db.get_db()) as conn:
         assert [tuple(row) for row in conn.execute("SELECT * FROM users")] == before_users
         assert [tuple(row) for row in conn.execute("SELECT * FROM sessions")] == before_sessions
-    assert db.list_apps() == [{"key": "writer", "name": "Sovereign Writer"}]
+    assert db.list_apps() == [
+        {"key": "lingua", "name": "Lingua"},
+        {"key": "writer", "name": "Sovereign Writer"},
+    ]
     assert all(db.list_user_entitlements(user_id) == [] for user_id in users.values())
     response = client.get("/api/auth/validate")
     assert response.status_code == 200
@@ -67,8 +73,9 @@ def test_duplicate_and_foreign_key_constraints(users):
             conn.execute("INSERT INTO user_apps VALUES (?, ?, 'now')", (users["user"], app_id))
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("INSERT INTO user_apps VALUES (?, ?, 'now')", (max(users.values()) + 1, app_id))
+        missing_app_id = conn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM apps").fetchone()[0]
         with pytest.raises(sqlite3.IntegrityError):
-            conn.execute("INSERT INTO user_apps VALUES (?, ?, 'now')", (users["admin"], app_id + 1))
+            conn.execute("INSERT INTO user_apps VALUES (?, ?, 'now')", (users["admin"], missing_app_id))
 
 
 @pytest.mark.parametrize("table", ["users", "apps"])
