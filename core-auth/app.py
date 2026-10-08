@@ -54,6 +54,7 @@ ALLOWED_ORIGINS = {
 ALLOWED_RETURN_ORIGINS = ALLOWED_ORIGINS | {
     "https://writer.innosocia.dk",
     "https://chat.innosocia.dk",
+    "https://lingua.innosocia.dk",
 }
 
 
