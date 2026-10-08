@@ -65,3 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_user_apps_app_id ON user_apps(app_id);
 INSERT INTO apps (key, name, created_at)
 VALUES ('writer', 'Sovereign Writer', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ON CONFLICT(key) DO NOTHING;
+
+INSERT INTO apps (key, name, created_at)
+VALUES ('lingua', 'Lingua', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+ON CONFLICT(key) DO NOTHING;

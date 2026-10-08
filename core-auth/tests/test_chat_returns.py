@@ -49,7 +49,8 @@ def test_unsafe_chat_returns_fall_back(client, monkeypatch, target):
 def test_chat_redirect_approval_does_not_expand_cors(client):
     chat = "https://chat.innosocia.dk"
     writer = "https://writer.innosocia.dk"
-    assert auth.ALLOWED_RETURN_ORIGINS - auth.ALLOWED_ORIGINS == {writer, chat}
+    lingua = "https://lingua.innosocia.dk"
+    assert auth.ALLOWED_RETURN_ORIGINS - auth.ALLOWED_ORIGINS == {writer, chat, lingua}
     for path in ("/api/auth/validate", "/api/admin/csrf"):
         response = client.get(path, headers={"Origin": chat})
         assert response.status_code == 401

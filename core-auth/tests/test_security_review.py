@@ -105,7 +105,8 @@ def test_cli_database_overrides_environment_and_requires_explicit_creation(tmp_p
         assert not environment_default.exists()
     with closing(db.get_db(target)) as conn:
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-        assert conn.execute("SELECT key FROM apps ORDER BY key").fetchall()[0][0] == "review-app"
+        keys = [row[0] for row in conn.execute("SELECT key FROM apps ORDER BY key")]
+        assert keys == ["lingua", "review-app", "writer"]
         assert conn.execute("SELECT COUNT(*) FROM user_apps").fetchone()[0] == 0
     before = target.read_bytes()
     assert subprocess.run(command + ["init"], env=environment, capture_output=True).returncode == 1
