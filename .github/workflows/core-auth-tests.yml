@@ -31,4 +31,4 @@ jobs:
           node-version: '22'
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements-dev.txt
-      - run: pytest -q
+      - run: pytest -q --basetemp=.pytest-tmp
