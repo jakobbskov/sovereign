@@ -93,7 +93,10 @@ def test_admin_grant_revoke_idempotent_and_isolated(client, login, users):
     token = login()
     url = f'/api/admin/users/{users["user"]}/entitlements'
     assert client.get(url).json["entitlements"] == []
-    assert client.get("/api/admin/apps").json["items"] == [{"key": "writer", "name": "Sovereign Writer"}]
+    assert client.get("/api/admin/apps").json["items"] == [
+        {"key": "lingua", "name": "Lingua"},
+        {"key": "writer", "name": "Sovereign Writer"},
+    ]
     for granted in (True, True, False, False):
         response = client.post(url, json={"app_key": "writer", "granted": granted}, headers={"X-CSRF-Token": token})
         assert response.status_code == 200
